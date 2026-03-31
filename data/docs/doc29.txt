@@ -1,0 +1,1 @@
+Batch processing allows machine learning models to process multiple samples simultaneously. This improves computational efficiency and stabilizes training.

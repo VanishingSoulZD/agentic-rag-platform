@@ -1,0 +1,1 @@
+Vector similarity search finds the closest vectors to a query vector in a high-dimensional space. Efficient indexing algorithms are required when datasets contain millions of vectors.

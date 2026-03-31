@@ -1,0 +1,1 @@
+GPU acceleration significantly speeds up deep learning training. GPUs are well suited for the matrix operations required by neural networks.

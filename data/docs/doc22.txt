@@ -1,0 +1,1 @@
+Semantic search improves information retrieval by understanding the meaning of queries instead of matching keywords. It uses embeddings to find documents with similar semantic content.

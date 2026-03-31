@@ -1,0 +1,1 @@
+Embeddings are numerical vector representations of text, images, or other data. Machine learning models convert content into vectors so that semantic similarity can be measured using distance metrics such as cosine similarity or Euclidean distance.

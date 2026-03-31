@@ -1,0 +1,1 @@
+OpenAI provides APIs for accessing large language models and embedding models. Developers can build chatbots, search systems, and automation tools using these APIs.

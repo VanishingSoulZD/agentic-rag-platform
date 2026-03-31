@@ -1,0 +1,1 @@
+Sentence transformers are models designed to generate high-quality sentence embeddings. They are widely used for semantic search and clustering tasks.

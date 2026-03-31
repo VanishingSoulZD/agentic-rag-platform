@@ -1,0 +1,1 @@
+ReAct is a reasoning framework where language models alternate between reasoning steps and actions. The model first explains its thought process, then calls tools such as search or calculation APIs.

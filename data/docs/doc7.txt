@@ -1,0 +1,1 @@
+Retrieval-Augmented Generation, often called RAG, combines information retrieval with large language models. Instead of relying only on model training data, RAG systems retrieve relevant documents and provide them to the model as context before generating an answer.

@@ -1,0 +1,1 @@
+Search engines index documents so they can be retrieved efficiently. Traditional systems rely on inverted indexes, while modern AI search uses vector similarity.

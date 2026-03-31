@@ -1,0 +1,1 @@
+Recommendation systems analyze user behavior to suggest relevant content. They are widely used in e-commerce, streaming platforms, and social networks.

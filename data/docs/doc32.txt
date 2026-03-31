@@ -1,0 +1,1 @@
+Cross-validation is a technique used to evaluate machine learning models more reliably. The dataset is split into multiple subsets, and the model is trained and tested several times.

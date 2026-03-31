@@ -1,0 +1,1 @@
+API gateways act as entry points for backend services. They handle authentication, rate limiting, and routing of requests.

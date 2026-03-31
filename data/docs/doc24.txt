@@ -1,0 +1,1 @@
+Machine learning models often require large datasets for training. However, techniques such as transfer learning allow models to adapt to new tasks with smaller datasets.

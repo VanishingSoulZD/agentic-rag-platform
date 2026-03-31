@@ -1,0 +1,1 @@
+TensorFlow is a widely used machine learning platform developed by Google. It supports training and deploying large-scale neural networks across multiple devices.

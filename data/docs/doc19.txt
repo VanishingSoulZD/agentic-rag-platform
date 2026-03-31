@@ -1,0 +1,1 @@
+Few-shot learning is a technique where a model learns a task from a small number of examples included in the prompt. This allows models to generalize to new tasks without additional training.

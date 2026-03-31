@@ -1,0 +1,1 @@
+Redis is an in-memory key-value data store widely used for caching, session storage, and real-time analytics. Because it keeps data in memory, Redis provides extremely low latency. It supports multiple data structures such as strings, lists, sets, and hashes, making it useful for many backend systems.

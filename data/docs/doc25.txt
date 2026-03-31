@@ -1,0 +1,1 @@
+Python is one of the most popular programming languages for machine learning and AI development. Its rich ecosystem includes libraries such as NumPy, PyTorch, and TensorFlow.

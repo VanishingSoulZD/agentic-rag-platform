@@ -1,0 +1,1 @@
+Caching improves application performance by storing frequently accessed data in memory. Redis and Memcached are common caching solutions.

@@ -1,0 +1,1 @@
+Computer vision enables machines to interpret visual data such as images and videos. Applications include object detection and facial recognition.

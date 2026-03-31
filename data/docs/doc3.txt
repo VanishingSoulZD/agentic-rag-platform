@@ -1,0 +1,1 @@
+Docker is a containerization platform that allows developers to package applications and their dependencies into lightweight containers. Containers ensure that applications run consistently across different environments. Docker is commonly used in development, testing, and production environments to simplify deployment.

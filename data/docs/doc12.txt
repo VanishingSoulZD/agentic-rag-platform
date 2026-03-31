@@ -1,0 +1,1 @@
+Cosine similarity is a metric used to measure the similarity between two vectors. It calculates the cosine of the angle between them. Values closer to 1 indicate higher similarity, making it useful for semantic search systems.

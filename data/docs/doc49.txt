@@ -1,0 +1,1 @@
+Knowledge graphs represent relationships between entities. They are often used to enhance search systems and recommendation engines.

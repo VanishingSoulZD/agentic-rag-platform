@@ -1,55 +1,71 @@
-# Prerequisites
-*.d
-
-# Object files
-*.o
-*.ko
-*.obj
-*.elf
-
-# Linker output
-*.ilk
-*.map
-*.exp
-
-# Precompiled Headers
-*.gch
-*.pch
-
-# Libraries
-*.lib
-*.a
-*.la
-*.lo
-
-# Shared objects (inc. Windows DLLs)
-*.dll
+# ======================
+# Python
+# ======================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
 *.so
-*.so.*
-*.dylib
 
-# Executables
-*.exe
-*.out
-*.app
-*.i*86
-*.x86_64
-*.hex
+# 虚拟环境
+venv/
+.venv/
+env/
+.conda/
+conda-env/
 
-# Debug files
-*.dSYM/
-*.su
-*.idb
-*.pdb
+# ======================
+# 日志 / 临时文件
+# ======================
+*.log
+*.tmp
+*.swp
 
-# Kernel Module Compile Results
-*.mod*
-*.cmd
-.tmp_versions/
-modules.order
-Module.symvers
-Mkfile.old
-dkms.conf
+# ======================
+# Jupyter
+# ======================
+.ipynb_checkpoints/
 
-# debug information files
-*.dwo
+# ======================
+# IDE (PyCharm / IntelliJ)
+# ======================
+.idea/
+*.iml
+
+# ======================
+# macOS
+# ======================
+.DS_Store
+
+# ======================
+# 环境变量 / 密钥
+# ======================
+.env
+.env.*
+
+# ======================
+# 构建产物
+# ======================
+build/
+dist/
+*.egg-info/
+
+# ======================
+# 测试缓存
+# ======================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ======================
+# 向量库 / 本地数据库（如果你后面用）
+# ======================
+chroma_db/
+faiss_index/
+milvus_data/
+
+# ======================
+# 下载的模型 / 大文件
+# ======================
+models/
+checkpoints/

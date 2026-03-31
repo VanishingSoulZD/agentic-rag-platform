@@ -1,0 +1,1 @@
+PyTorch is a deep learning framework known for its flexibility and dynamic computation graph. Researchers often use PyTorch for experimentation and rapid model development.

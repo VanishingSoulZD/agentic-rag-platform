@@ -1,0 +1,1 @@
+Speech recognition converts spoken language into text. Deep learning models have significantly improved the accuracy of modern speech systems.

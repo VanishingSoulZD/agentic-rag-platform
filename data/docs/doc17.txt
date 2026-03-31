@@ -1,0 +1,1 @@
+Planner-Executor is a common architecture in agent systems. A planner generates a multi-step plan to solve a problem, while an executor performs each step using available tools.

@@ -1,0 +1,1 @@
+Message queues enable asynchronous communication between services. Popular systems include RabbitMQ, Kafka, and Redis streams.

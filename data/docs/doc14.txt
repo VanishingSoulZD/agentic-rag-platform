@@ -1,0 +1,1 @@
+LangGraph extends LangChain by enabling developers to build complex agent workflows. Instead of simple chains, LangGraph allows graph-based execution with loops, conditional logic, and state management.

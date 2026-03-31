@@ -1,0 +1,1 @@
+Attention mechanisms allow neural networks to weigh the importance of different input tokens. Instead of treating all inputs equally, attention dynamically assigns weights to tokens based on relevance, improving model performance in sequence tasks.

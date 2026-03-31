@@ -1,0 +1,1 @@
+Large language models are deep learning models trained on massive text datasets. They can perform tasks such as question answering, summarization, translation, and code generation. Recent models use transformer architectures to understand and generate language.

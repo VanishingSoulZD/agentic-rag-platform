@@ -1,0 +1,1 @@
+Kubernetes is an orchestration system used to manage containerized applications at scale. It automates deployment, scaling, and management of containers. Kubernetes helps organizations run large distributed systems reliably across clusters of machines.

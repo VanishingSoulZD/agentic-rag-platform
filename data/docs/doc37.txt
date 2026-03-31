@@ -1,0 +1,1 @@
+Microservices architecture splits applications into smaller independent services. Each service can be developed, deployed, and scaled independently.

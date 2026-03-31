@@ -1,0 +1,1 @@
+Overfitting occurs when a machine learning model learns noise in the training data instead of general patterns. Techniques such as regularization and dropout help prevent overfitting.

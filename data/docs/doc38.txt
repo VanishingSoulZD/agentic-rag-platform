@@ -1,0 +1,1 @@
+Continuous integration and continuous deployment automate the software delivery pipeline. CI/CD tools help teams release software more frequently and reliably.

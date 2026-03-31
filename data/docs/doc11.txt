@@ -1,0 +1,1 @@
+FAISS is an open-source library developed by Meta for efficient similarity search and clustering of dense vectors. It supports billions of vectors and provides highly optimized algorithms for nearest neighbor search.

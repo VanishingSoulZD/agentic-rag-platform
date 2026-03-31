@@ -1,0 +1,1 @@
+Feature engineering involves selecting or transforming variables to improve model performance. Good features can significantly enhance prediction accuracy.

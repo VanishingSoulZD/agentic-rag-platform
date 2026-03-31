@@ -1,0 +1,1 @@
+An AI agent is a system that can perceive information, reason about it, and take actions using tools or APIs. Modern LLM agents often use planning strategies like ReAct or Planner-Executor to solve complex tasks.
