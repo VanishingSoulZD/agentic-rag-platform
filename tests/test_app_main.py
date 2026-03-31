@@ -12,8 +12,8 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.main import app
 
-
 client = TestClient(app)
+error_client = TestClient(app, raise_server_exceptions=False)
 
 
 def test_ping_returns_200_and_status_ok() -> None:
@@ -22,18 +22,28 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {'status': 'ok'}
 
-
 def test_chat_returns_200_and_static_answer_with_session_id() -> None:
     response = client.post('/chat', json={'message': '你好', 'session_id': 's-1'})
 
     assert response.status_code == 200
     assert response.json() == {'answer': '这是一个静态回复', 'session_id': 's-1'}
 
-
-def test_chat_request_validation_requires_message_and_session_id() -> None:
+    
+def test_chat_validation_error_returns_unified_format() -> None:
     response = client.post('/chat', json={'message': 'only-message'})
 
     assert response.status_code == 422
+    assert response.json() == {'error': 'invalid_request', 'code': 422}
+
+
+def test_chat_internal_error_returns_unified_format() -> None:
+    response = error_client.post(
+        '/chat',
+        json={'message': 'raise_error', 'session_id': 's-1'},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {'error': 'internal_server_error', 'code': 500}
 
 
 def test_chat_concurrent_requests_do_not_serialize() -> None:
