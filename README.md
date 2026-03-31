@@ -1,8 +1,6 @@
-# agentic-rag-platform
+# Agentic RAG Platform（智能代理检索增强平台）
 
-Agentic RAG Platform（智能代理检索增强平台）
-
-## Quickstart（FastAPI Day 1）
+## Quickstart
 
 ### 1) 安装依赖
 
@@ -22,15 +20,28 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 # health check
 curl -i http://127.0.0.1:8000/ping
 
-# chat（静态回复）
+# chat（静态回复，需 message + session_id）
 curl -i -X POST http://127.0.0.1:8000/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"你好"}'
+  -d '{"message":"你好","session_id":"s-1"}'
 ```
 
 期望结果：
 - `GET /ping` 返回 `200` 和 JSON（如 `{"status":"ok"}`）
-- `POST /chat` 返回 `200` 和 JSON（如 `{"answer":"这是一个静态回复"}`）
+- `POST /chat` 返回 `200` 和 JSON（如 `{"answer":"这是一个静态回复","session_id":"s-1"}`）
+
+### 4) 并发验证（5 个请求）
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -X POST http://127.0.0.1:8000/chat \
+    -H 'Content-Type: application/json' \
+    -d "{\"message\":\"hello-$i\",\"session_id\":\"s-$i\"}" &
+done
+wait
+```
+
+观察点：响应会并发返回，不会严格一个接一个串行等待。
 
 ## 测试
 
