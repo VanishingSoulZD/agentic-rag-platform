@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -107,6 +108,12 @@ def ping() -> dict[str, str]:
 
 @app.post('/chat')
 async def chat(req: ChatRequest) -> dict[str, object]:
+    if req.message == 'raise_error':
+        raise RuntimeError('mocked error for testing')
+
+    # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
+    await asyncio.sleep(1)
+
     append_message(req.session_id, {'role': 'user', 'content': req.message})
 
     history = get_memory(req.session_id)
