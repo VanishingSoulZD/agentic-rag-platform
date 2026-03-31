@@ -10,6 +10,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from app.llm_client import AsyncLLMClient
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s | %(levelname)s | %(message)s',
@@ -22,6 +24,11 @@ REDIS_TTL_SECONDS = 24 * 60 * 60
 REDIS_KEY_PREFIX = 'chat:memory:'
 
 redis_client: redis.Redis | None = None
+llm_client = AsyncLLMClient(
+    timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
+    max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
+)
+
 
 class ChatRequest(BaseModel):
     message: str
@@ -108,11 +115,21 @@ async def chat(req: ChatRequest) -> dict[str, object]:
     await asyncio.sleep(1)
 
     append_message(req.session_id, {'role': 'user', 'content': req.message})
-    answer = '这是一个静态回复'
-    append_message(req.session_id, {'role': 'assistant', 'content': answer})
+
+    history = get_memory(req.session_id)
+    llm_result = await llm_client.chat(history)
+
+    append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
 
     return {
-        'answer': answer,
+        'answer': llm_result.answer,
         'session_id': req.session_id,
         'history': get_memory(req.session_id),
+        'use': {
+            'model': llm_result.model,
+            'mock': llm_result.mock,
+            'prompt_tokens': llm_result.prompt_tokens,
+            'completion_tokens': llm_result.completion_tokens,
+            'total_tokens': llm_result.total_tokens,
+        },
     }
