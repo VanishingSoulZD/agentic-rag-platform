@@ -23,7 +23,6 @@ REDIS_KEY_PREFIX = 'chat:memory:'
 
 redis_client: redis.Redis | None = None
 
-
 class ChatRequest(BaseModel):
     message: str
     session_id: str
@@ -105,7 +104,8 @@ async def chat(req: ChatRequest) -> dict[str, object]:
     if req.message == 'raise_error':
         raise RuntimeError('mocked error for testing')
 
-    await asyncio.sleep(0.2)
+    # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
+    await asyncio.sleep(1)
 
     append_message(req.session_id, {'role': 'user', 'content': req.message})
     answer = '这是一个静态回复'

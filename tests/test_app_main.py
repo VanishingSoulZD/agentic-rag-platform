@@ -1,9 +1,15 @@
-import sys
-from pathlib import Path
+
 
 import pytest
-from fastapi.testclient import TestClient
+
 from redis.exceptions import ConnectionError
+import asyncio
+import sys
+import time
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -33,8 +39,24 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.json() == {'status': 'ok'}
 
 
+def test_chat_returns_200_and_static_answer_with_session_id() -> None:
+    session_id = 's-1'
+    _cleanup_session(session_id)
+    response = client.post('/chat', json={'message': '你好', 'session_id': session_id})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        'answer': '这是一个静态回复',
+        'session_id': 's-1',
+        'history': [
+            {'role': 'user', 'content': '你好'},
+            {'role': 'assistant', 'content': '这是一个静态回复'},
+        ]
+    }
+
+    
 def test_chat_validation_error_returns_unified_format() -> None:
-    response = client.post('/chat', json={'message': 'hello'})
+    response = client.post('/chat', json={'message': 'only-message'})
 
     assert response.status_code == 422
     assert response.json() == {'error': 'invalid_request', 'code': 422}
@@ -48,7 +70,6 @@ def test_chat_internal_error_returns_unified_format() -> None:
 
     assert response.status_code == 500
     assert response.json() == {'error': 'internal_server_error', 'code': 500}
-
 
 def test_chat_stores_multi_turn_messages_in_redis() -> None:
     _require_redis()
@@ -73,3 +94,48 @@ def test_chat_stores_multi_turn_messages_in_redis() -> None:
     assert 0 < ttl <= main.REDIS_TTL_SECONDS
 
     _cleanup_session(session_id)
+
+def test_memory_survives_app_restart_with_same_redis() -> None:
+    session_id = 'session-restart'
+    _cleanup_session(session_id)
+    response1 = client.post('/chat', json={'message': 'persisted-message', 'session_id': session_id})
+    assert response1.status_code == 200
+    history1 = main.get_memory(session_id)
+    assert history1 == [
+        {'role': 'user', 'content': 'persisted-message'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+    ]
+
+    restarted_client = TestClient(main.app)
+    response2 = restarted_client.post('/chat', json={'message': 'persisted-message2', 'session_id': session_id})
+    assert response2.status_code == 200
+
+    history2 = main.get_memory(session_id)
+    assert history2 == [
+        {'role': 'user', 'content': 'persisted-message'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+        {'role': 'user', 'content': 'persisted-message2'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+    ]
+
+def test_chat_concurrent_requests_do_not_serialize() -> None:
+    async def _run() -> float:
+        transport = ASGITransport(app=main.app)
+        async with AsyncClient(transport=transport, base_url='http://testserver') as ac:
+            payloads = [
+                {'message': f'hello-{i}', 'session_id': f's-{i}'}
+                for i in range(5)
+            ]
+            start = time.perf_counter()
+            responses = await asyncio.gather(
+                *(ac.post('/chat', json=payload) for payload in payloads)
+            )
+            elapsed = time.perf_counter() - start
+
+        assert all(resp.status_code == 200 for resp in responses)
+        return elapsed
+
+    elapsed = asyncio.run(_run())
+
+    # 单请求 sleep 为 1s；若串行约 5s，并发应显著小于 5s。
+    assert elapsed < 3.0
