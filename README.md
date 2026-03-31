@@ -1,8 +1,6 @@
-# agentic-rag-platform
+# Agentic RAG Platform（智能代理检索增强平台）
 
-Agentic RAG Platform（智能代理检索增强平台）
-
-## Quickstart（FastAPI Day 2）
+## Quickstart
 
 ### 1) 安装依赖
 
