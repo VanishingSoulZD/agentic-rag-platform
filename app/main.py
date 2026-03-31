@@ -73,7 +73,8 @@ async def chat(req: ChatRequest) -> dict[str, str]:
     if req.message == 'raise_error':
         raise RuntimeError('mocked error for testing')
 
-    await asyncio.sleep(0.2)
+    # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
+    await asyncio.sleep(1)
     return {
         'answer': '这是一个静态回复',
         'session_id': req.session_id,

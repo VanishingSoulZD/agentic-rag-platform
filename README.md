@@ -1,8 +1,6 @@
-# agentic-rag-platform
+# Agentic RAG Platform（智能代理检索增强平台）
 
-Agentic RAG Platform（智能代理检索增强平台）
-
-## Quickstart（FastAPI Day 3）
+## Quickstart
 
 ### 1) 安装依赖
 
@@ -40,8 +38,22 @@ curl -i -X POST http://127.0.0.1:8000/chat \
 
 期望结果：
 - `GET /ping` 返回 `200` 和 JSON（如 `{"status":"ok"}`）
+- `POST /chat` 返回 `200` 和 JSON（如 `{"answer":"这是一个静态回复","session_id":"s-1"}`）
 - 参数错误返回统一格式：`{"error":"invalid_request","code":422}`
 - 服务错误返回统一格式：`{"error":"internal_server_error","code":500}`
+
+### 4) 并发验证（5 个请求）
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -s -X POST http://127.0.0.1:8000/chat \
+    -H 'Content-Type: application/json' \
+    -d "{\"message\":\"hello-$i\",\"session_id\":\"s-$i\"}" &
+done
+wait
+```
+
+观察点：响应会并发返回，不会严格一个接一个串行等待。
 
 ## 测试
 
