@@ -8,13 +8,21 @@
 pip install -r requirements.txt
 ```
 
-### 2) 启动 FastAPI 应用
+### 2) 启动 Redis（Docker）
+
+```bash
+docker run -d --name day4-redis -p 6379:6379 redis:7
+```
+
+> 若容器已存在，可先执行：`docker start day4-redis`
+
+### 3) 启动 FastAPI 应用
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3) 验证接口
+### 4) 验证接口
 
 ```bash
 # health check
@@ -42,7 +50,7 @@ curl -i -X POST http://127.0.0.1:8000/chat \
 - 参数错误返回统一格式：`{"error":"invalid_request","code":422}`
 - 服务错误返回统一格式：`{"error":"internal_server_error","code":500}`
 
-### 4) 并发验证（5 个请求）
+### 5) 并发验证（5 个请求）
 
 ```bash
 for i in 1 2 3 4 5; do
@@ -54,6 +62,25 @@ wait
 ```
 
 观察点：响应会并发返回，不会严格一个接一个串行等待。
+
+### 6) 验证聊天与会话历史（通过 `/chat` 自动存储）
+
+```bash
+# 第一轮
+curl -i -X POST http://127.0.0.1:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"hello","session_id":"s-1"}'
+
+# 第二轮（同一个 session）
+curl -i -X POST http://127.0.0.1:8000/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"how are you","session_id":"s-1"}'
+```
+
+期望结果：
+- `/chat` 返回 `history`，其中消息是 `{'role','content'}` 结构。
+- 同一 `session_id` 的多轮消息会持续累积（user/assistant 成对追加）。
+- 重启 FastAPI 服务后（不重启 Redis），再次请求同一 `session_id` 仍能读取之前历史。
 
 ## 测试
 

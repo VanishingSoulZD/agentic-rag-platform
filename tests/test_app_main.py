@@ -1,3 +1,8 @@
+
+
+import pytest
+
+from redis.exceptions import ConnectionError
 import asyncio
 import sys
 import time
@@ -10,10 +15,21 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.main import app
+import app.main as main
 
-client = TestClient(app)
-error_client = TestClient(app, raise_server_exceptions=False)
+client = TestClient(main.app)
+error_client = TestClient(main.app, raise_server_exceptions=False)
+
+
+def _require_redis() -> None:
+    try:
+        main.get_redis_client().ping()
+    except ConnectionError:
+        pytest.skip('Redis is not available on 127.0.0.1:6379; start docker redis first.')
+
+
+def _cleanup_session(session_id: str) -> None:
+    main.get_redis_client().delete(main.memory_key(session_id))
 
 
 def test_ping_returns_200_and_status_ok() -> None:
@@ -22,11 +38,21 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.status_code == 200
     assert response.json() == {'status': 'ok'}
 
+
 def test_chat_returns_200_and_static_answer_with_session_id() -> None:
-    response = client.post('/chat', json={'message': '你好', 'session_id': 's-1'})
+    session_id = 's-1'
+    _cleanup_session(session_id)
+    response = client.post('/chat', json={'message': '你好', 'session_id': session_id})
 
     assert response.status_code == 200
-    assert response.json() == {'answer': '这是一个静态回复', 'session_id': 's-1'}
+    assert response.json() == {
+        'answer': '这是一个静态回复',
+        'session_id': 's-1',
+        'history': [
+            {'role': 'user', 'content': '你好'},
+            {'role': 'assistant', 'content': '这是一个静态回复'},
+        ]
+    }
 
     
 def test_chat_validation_error_returns_unified_format() -> None:
@@ -45,10 +71,56 @@ def test_chat_internal_error_returns_unified_format() -> None:
     assert response.status_code == 500
     assert response.json() == {'error': 'internal_server_error', 'code': 500}
 
+def test_chat_stores_multi_turn_messages_in_redis() -> None:
+    _require_redis()
+    session_id = 'session-day4-chat'
+    _cleanup_session(session_id)
+
+    response1 = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
+    response2 = client.post('/chat', json={'message': 'how are you', 'session_id': session_id})
+
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+
+    history = main.get_memory(session_id)
+    assert history == [
+        {'role': 'user', 'content': 'hello'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+        {'role': 'user', 'content': 'how are you'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+    ]
+
+    ttl = main.get_redis_client().ttl(main.memory_key(session_id))
+    assert 0 < ttl <= main.REDIS_TTL_SECONDS
+
+    _cleanup_session(session_id)
+
+def test_memory_survives_app_restart_with_same_redis() -> None:
+    session_id = 'session-restart'
+    _cleanup_session(session_id)
+    response1 = client.post('/chat', json={'message': 'persisted-message', 'session_id': session_id})
+    assert response1.status_code == 200
+    history1 = main.get_memory(session_id)
+    assert history1 == [
+        {'role': 'user', 'content': 'persisted-message'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+    ]
+
+    restarted_client = TestClient(main.app)
+    response2 = restarted_client.post('/chat', json={'message': 'persisted-message2', 'session_id': session_id})
+    assert response2.status_code == 200
+
+    history2 = main.get_memory(session_id)
+    assert history2 == [
+        {'role': 'user', 'content': 'persisted-message'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+        {'role': 'user', 'content': 'persisted-message2'},
+        {'role': 'assistant', 'content': '这是一个静态回复'},
+    ]
 
 def test_chat_concurrent_requests_do_not_serialize() -> None:
     async def _run() -> float:
-        transport = ASGITransport(app=app)
+        transport = ASGITransport(app=main.app)
         async with AsyncClient(transport=transport, base_url='http://testserver') as ac:
             payloads = [
                 {'message': f'hello-{i}', 'session_id': f's-{i}'}
