@@ -1,6 +1,24 @@
 # Agentic RAG Platform（智能代理检索增强平台）
 
-## Quickstart
+## Quickstart-Docker
+
+### 一步启动
+
+```bash
+docker compose up --build
+```
+
+> 启动后 API 地址：`http://127.0.0.1:8000`
+
+### 说明
+
+- `docker-compose.yml` 同时启动两个服务：
+    - `api`：FastAPI 应用
+    - `redis`：会话记忆存储
+- 如需停止并删除容器：
+  docker compose down
+
+## Quickstart-本机
 
 ### 1) 安装依赖
 
