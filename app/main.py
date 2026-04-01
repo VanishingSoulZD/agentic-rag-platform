@@ -1,0 +1,165 @@
+import json
+import logging
+import os
+import time
+
+import redis
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
+
+from app.llm_client import AsyncLLMClient
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s | %(levelname)s | %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
+
+REDIS_TTL_SECONDS = 24 * 60 * 60
+REDIS_KEY_PREFIX = 'chat:memory:'
+
+redis_client: redis.Redis | None = None
+llm_client = AsyncLLMClient(
+    timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
+    max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
+)
+
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: str
+
+
+def get_redis_client() -> redis.Redis:
+    global redis_client
+    if redis_client is None:
+        redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+    return redis_client
+
+
+def memory_key(session_id: str) -> str:
+    return f'{REDIS_KEY_PREFIX}{session_id}'
+
+
+def get_memory(session_id: str) -> list[dict[str, str]]:
+    raw_messages = get_redis_client().lrange(memory_key(session_id), 0, -1)
+    return [json.loads(item) for item in raw_messages]
+
+
+def append_message(session_id: str, message: dict[str, str]) -> None:
+    client = get_redis_client()
+    key = memory_key(session_id)
+    client.rpush(key, json.dumps(message, ensure_ascii=False))
+    client.expire(key, REDIS_TTL_SECONDS)
+
+
+@app.middleware('http')
+async def log_request_response(request: Request, call_next):
+    start = time.perf_counter()
+    logger.info('request method=%s path=%s', request.method, request.url.path)
+
+    response = await call_next(request)
+
+    elapsed_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        'response method=%s path=%s status=%s elapsed_ms=%.2f',
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed_ms,
+    )
+    return response
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.warning('validation_error path=%s detail=%s', request.url.path, exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content={
+            'error': 'invalid_request',
+            'code': 422,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception('internal_error path=%s error=%s', request.url.path, str(exc))
+    return JSONResponse(
+        status_code=500,
+        content={
+            'error': 'internal_server_error',
+            'code': 500,
+        },
+    )
+
+
+@app.get('/ping')
+def ping() -> dict[str, str]:
+    return {'status': 'ok'}
+
+
+@app.post('/chat')
+async def chat(req: ChatRequest) -> dict[str, object]:
+    append_message(req.session_id, {'role': 'user', 'content': req.message})
+
+    history = get_memory(req.session_id)
+    llm_result = await llm_client.chat(history)
+
+    append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+
+    return {
+        'answer': llm_result.answer,
+        'session_id': req.session_id,
+        'history': get_memory(req.session_id),
+        'use': {
+            'model': llm_result.model,
+            'mock': llm_result.mock,
+            'prompt_tokens': llm_result.prompt_tokens,
+            'completion_tokens': llm_result.completion_tokens,
+            'total_tokens': llm_result.total_tokens,
+        },
+    }
+
+
+@app.post('/chat/stream')
+async def chat_stream(req: ChatRequest):
+    append_message(req.session_id, {'role': 'user', 'content': req.message})
+    history = get_memory(req.session_id)
+
+    async def event_gen():
+        full_answer = ''
+
+        async for event in llm_client.stream_chat(history):
+            if event['type'] == 'token':
+                token = str(event['content'])
+                full_answer += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+            elif event['type'] == 'usage':
+                usage_payload = {
+                    'type': 'usage',
+                    'prompt_tokens': event['prompt_tokens'],
+                    'completion_tokens': event['completion_tokens'],
+                    'total_tokens': event['total_tokens'],
+                    'model': event['model'],
+                    'mock': event['mock'],
+                }
+                logger.info(
+                    'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                    req.session_id,
+                    event['prompt_tokens'],
+                    event['completion_tokens'],
+                    event['total_tokens'],
+                )
+                yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
+
+        append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+        yield 'data: [DONE]\n\n'
+
+    return StreamingResponse(event_gen(), media_type='text/event-stream')
