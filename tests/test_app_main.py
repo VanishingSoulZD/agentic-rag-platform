@@ -1,10 +1,12 @@
 import asyncio
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 from redis.exceptions import ConnectionError
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +17,7 @@ import app.main as main
 from app.llm_client import AsyncLLMClient
 
 client = TestClient(main.app)
+error_client = TestClient(main.app, raise_server_exceptions=False)
 
 
 def _require_redis() -> None:
@@ -35,28 +38,9 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.json() == {'status': 'ok'}
 
 
-def test_chat_validation_error_returns_unified_format() -> None:
-    response = client.post('/chat', json={'message': 'hello'})
-
-    assert response.status_code == 422
-    assert response.json() == {'error': 'invalid_request', 'code': 422}
-
-
-def test_llm_client_mock_chat_returns_usage_and_answer() -> None:
-    llm = AsyncLLMClient(api_key=None)
-
-    result = asyncio.run(
-        llm.chat([{'role': 'user', 'content': '你好，介绍一下你自己'}])
-    )
-
-    assert result.mock is True
-    assert result.answer.startswith('[MOCK]')
-    assert result.total_tokens >= result.prompt_tokens + result.completion_tokens - 1
-
-
-def test_chat_stores_multi_turn_messages_and_use_field() -> None:
+def test_chat_returns_200_and_answer_with_session_id() -> None:
     _require_redis()
-    session_id = 'session-day6-chat'
+    session_id = 'test_chat_returns_200_and_answer_with_session_id'
     _cleanup_session(session_id)
 
     response = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
@@ -75,22 +59,121 @@ def test_chat_stores_multi_turn_messages_and_use_field() -> None:
     }
 
     history = main.get_memory(session_id)
-    assert len(history) >= 2
+    assert len(history) == 2
     assert history[0] == {'role': 'user', 'content': 'hello'}
     assert history[-1]['role'] == 'assistant'
 
     _cleanup_session(session_id)
 
 
+def test_chat_validation_error_returns_unified_format() -> None:
+    response = client.post('/chat', json={'message': 'only-message'})
+
+    assert response.status_code == 422
+    assert response.json() == {'error': 'invalid_request', 'code': 422}
+
+
+def test_chat_internal_error_returns_unified_format() -> None:
+    session_id = 'test_chat_internal_error_returns_unified_format'
+    response = error_client.post(
+        '/chat',
+        json={'message': 'raise_error', 'session_id': session_id},
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {'error': 'internal_server_error', 'code': 500}
+
+
+def test_chat_concurrent_requests_do_not_serialize() -> None:
+    concurrent_count = 3
+    _require_redis()
+    for i in range(concurrent_count):
+        _cleanup_session(f'test_chat_concurrent_requests_do_not_serialize-{i}')
+
+    async def _run() -> float:
+        transport = ASGITransport(app=main.app)
+        async with AsyncClient(transport=transport, base_url='http://testserver') as ac:
+            payloads = [
+                {'message': f'hello-{i}', 'session_id': f'test_chat_concurrent_requests_do_not_serialize-{i}'}
+                for i in range(concurrent_count)
+            ]
+            start = time.perf_counter()
+            responses = await asyncio.gather(
+                *(ac.post('/chat', json=payload) for payload in payloads)
+            )
+            elapsed = time.perf_counter() - start
+
+        assert all(resp.status_code == 200 for resp in responses)
+        return elapsed
+
+    elapsed = asyncio.run(_run())
+
+    for i in range(concurrent_count):
+        _cleanup_session(f'test_chat_concurrent_requests_do_not_serialize-{i}')
+
+    # 单请求 sleep 为 1s；若串行约 3s，并发应显著小于 3s。
+    assert elapsed < concurrent_count
+
+
+def test_llm_client_mock_chat_returns_usage_and_answer() -> None:
+    llm = AsyncLLMClient(api_key=None)
+
+    result = asyncio.run(
+        llm.chat([{'role': 'user', 'content': 'hello'}])
+    )
+
+    assert result.mock is True
+    assert result.answer.startswith('[MOCK]')
+    assert result.total_tokens >= result.prompt_tokens + result.completion_tokens - 1
+
+
+def test_chat_stores_multi_turn_messages_in_redis() -> None:
+    _require_redis()
+    session_id = 'test_chat_stores_multi_turn_messages_in_redis'
+    _cleanup_session(session_id)
+
+    response1 = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
+    response2 = client.post('/chat', json={'message': 'how are you', 'session_id': session_id})
+
+    assert response1.status_code == 200
+    assert response2.status_code == 200
+
+    history = main.get_memory(session_id)
+    assert len(history) == 4
+
+    ttl = main.get_redis_client().ttl(main.memory_key(session_id))
+    assert 0 < ttl <= main.REDIS_TTL_SECONDS
+
+    _cleanup_session(session_id)
+
+
+def test_memory_survives_app_restart_with_same_redis() -> None:
+    _require_redis()
+    session_id = 'test_memory_survives_app_restart_with_same_redis'
+    _cleanup_session(session_id)
+    response1 = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
+    assert response1.status_code == 200
+    history1 = main.get_memory(session_id)
+    assert len(history1) == 2
+
+    restarted_client = TestClient(main.app)
+    response2 = restarted_client.post('/chat', json={'message': 'how are you', 'session_id': session_id})
+    assert response2.status_code == 200
+    history2 = main.get_memory(session_id)
+    assert len(history2) == 4
+
+    _cleanup_session(session_id)
+
+
 def test_chat_stream_outputs_token_then_usage_events() -> None:
     _require_redis()
-    session_id = 'session-day6-stream'
+    session_id = 'test_chat_stream_outputs_token_then_usage_events'
     _cleanup_session(session_id)
 
     with client.stream(
-        'POST',
-        '/chat/stream',
-        json={'message': 'hello stream', 'session_id': session_id},
+            'POST',
+            '/chat/stream',
+            json={'message': 'hello stream', 'session_id': session_id},
     ) as response:
         assert response.status_code == 200
         lines = [line for line in response.iter_lines() if line]
