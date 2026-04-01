@@ -7,7 +7,7 @@ import time
 import redis
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
@@ -133,3 +133,40 @@ async def chat(req: ChatRequest) -> dict[str, object]:
             'total_tokens': llm_result.total_tokens,
         },
     }
+
+
+@app.post('/chat/stream')
+async def chat_stream(req: ChatRequest):
+    append_message(req.session_id, {'role': 'user', 'content': req.message})
+    history = get_memory(req.session_id)
+
+    async def event_gen():
+        full_answer = ''
+
+        async for event in llm_client.stream_chat(history):
+            if event['type'] == 'token':
+                token = str(event['content'])
+                full_answer += token
+                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+            elif event['type'] == 'usage':
+                usage_payload = {
+                    'type': 'usage',
+                    'prompt_tokens': event['prompt_tokens'],
+                    'completion_tokens': event['completion_tokens'],
+                    'total_tokens': event['total_tokens'],
+                    'model': event['model'],
+                    'mock': event['mock'],
+                }
+                logger.info(
+                    'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                    req.session_id,
+                    event['prompt_tokens'],
+                    event['completion_tokens'],
+                    event['total_tokens'],
+                )
+                yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
+
+        append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+        yield 'data: [DONE]\n\n'
+
+    return StreamingResponse(event_gen(), media_type='text/event-stream')

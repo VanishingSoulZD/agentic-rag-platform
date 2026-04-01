@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import AsyncGenerator
 
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
@@ -43,9 +43,13 @@ class AsyncLLMClient:
     def _estimate_tokens(text: str) -> int:
         return max(1, len(text) // 4)
 
+    @staticmethod
+    def _extract_latest_user_text(messages: list[dict[str, str]]) -> str:
+        return next((m['content'] for m in reversed(messages) if m.get('role') == 'user'), '')
+
     async def chat(self, messages: list[dict[str, str]]) -> LLMResult:
         if self.mock_mode:
-            user_text = next((m['content'] for m in reversed(messages) if m.get('role') == 'user'), '')
+            user_text = self._extract_latest_user_text(messages)
             answer = f"[MOCK] 你问的是：{user_text}"
             prompt_text = '\n'.join(m.get('content', '') for m in messages)
             prompt_tokens = self._estimate_tokens(prompt_text)
@@ -101,3 +105,75 @@ class AsyncLLMClient:
                 await asyncio.sleep(sleep_seconds)
 
         raise RuntimeError(f'LLM request failed after retries: {last_error}')
+
+    async def stream_chat(self, messages: list[dict[str, str]]) -> AsyncGenerator[dict, None]:
+        if self.mock_mode:
+            user_text = self._extract_latest_user_text(messages)
+            answer = f"[MOCK] 你问的是：{user_text}"
+            prompt_text = '\n'.join(m.get('content', '') for m in messages)
+            prompt_tokens = self._estimate_tokens(prompt_text)
+            completion_tokens = 0
+
+            for ch in answer:
+                completion_tokens += self._estimate_tokens(ch)
+                yield {'type': 'token', 'content': ch}
+                await asyncio.sleep(0.01)
+
+            logger.info(
+                'llm_use_stream model=%s mock=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                self.model,
+                True,
+                prompt_tokens,
+                completion_tokens,
+                prompt_tokens + completion_tokens,
+            )
+            yield {
+                'type': 'usage',
+                'prompt_tokens': prompt_tokens,
+                'completion_tokens': completion_tokens,
+                'total_tokens': prompt_tokens + completion_tokens,
+                'model': self.model,
+                'mock': True,
+            }
+            return
+
+        completion_text = ''
+        prompt_tokens = self._estimate_tokens(str(messages))
+        completion_tokens = 0
+
+        stream = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            stream=True,
+            stream_options={'include_usage': True},
+        )
+
+        async for chunk in stream:
+            if getattr(chunk, 'usage', None):
+                prompt_tokens = chunk.usage.prompt_tokens or prompt_tokens
+                completion_tokens = chunk.usage.completion_tokens or completion_tokens
+
+            delta = chunk.choices[0].delta.content if chunk.choices else None
+            if delta:
+                completion_text += delta
+                completion_tokens += self._estimate_tokens(delta)
+                yield {'type': 'token', 'content': delta}
+
+        total_tokens = prompt_tokens + completion_tokens
+        logger.info(
+            'llm_use_stream model=%s mock=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+            self.model,
+            False,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
+        )
+        yield {
+            'type': 'usage',
+            'prompt_tokens': prompt_tokens,
+            'completion_tokens': completion_tokens,
+            'total_tokens': total_tokens,
+            'model': self.model,
+            'mock': False,
+        }
+
