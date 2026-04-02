@@ -1,17 +1,11 @@
 import asyncio
 import json
-import sys
 import time
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from redis.exceptions import ConnectionError
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 import app.main as main
 from app.llm_client import AsyncLLMClient
@@ -38,13 +32,12 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.json() == {'status': 'ok'}
 
 
-
-
 def test_ping_response_contains_request_id_header() -> None:
     response = client.get('/ping')
 
     assert response.status_code == 200
     assert response.headers.get('X-Request-ID')
+
 
 def test_chat_returns_200_and_answer_with_session_id() -> None:
     _require_redis()

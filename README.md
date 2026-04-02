@@ -15,6 +15,7 @@ docker compose up --build
 - `docker-compose.yml` 同时启动两个服务：
     - `api`：FastAPI 应用
     - `redis`：会话记忆存储
+- Compose 中默认设置 `MOCK_LLM=true`，无需 OpenAI Key 即可本地联调。
 - 如需停止并删除容器：
   docker compose down
 

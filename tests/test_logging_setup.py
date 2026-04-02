@@ -1,6 +1,5 @@
 import importlib
 import logging
-from pathlib import Path
 
 
 def _reload_logging_setup_module():
