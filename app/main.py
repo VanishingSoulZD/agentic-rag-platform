@@ -5,7 +5,6 @@ import os
 import time
 from uuid import uuid4
 
-import redis
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -13,6 +12,7 @@ from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
+from app.memory import ChatStoreConfig, HybridChatStore
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -23,7 +23,13 @@ REDIS_TTL_SECONDS = 24 * 60 * 60
 REDIS_KEY_PREFIX = 'chat:memory:'
 REQUEST_ID_HEADER = 'X-Request-ID'
 
-redis_client: redis.Redis | None = None
+chat_store = HybridChatStore(
+    ChatStoreConfig(
+        redis_url=os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0'),
+        key_prefix=REDIS_KEY_PREFIX,
+        ttl_seconds=REDIS_TTL_SECONDS,
+    )
+)
 llm_client = AsyncLLMClient(
     timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
@@ -35,28 +41,20 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-def get_redis_client() -> redis.Redis:
-    global redis_client
-    if redis_client is None:
-        redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-        redis_client = redis.from_url(redis_url, decode_responses=True)
-    return redis_client
+def get_redis_client():
+    return chat_store.get_redis_client()
 
 
 def memory_key(session_id: str) -> str:
-    return f'{REDIS_KEY_PREFIX}{session_id}'
+    return chat_store.memory_key(session_id)
 
 
 def get_memory(session_id: str) -> list[dict[str, str]]:
-    raw_messages = get_redis_client().lrange(memory_key(session_id), 0, -1)
-    return [json.loads(item) for item in raw_messages]
+    return chat_store.get_memory(session_id)
 
 
 def append_message(session_id: str, message: dict[str, str]) -> None:
-    client = get_redis_client()
-    key = memory_key(session_id)
-    client.rpush(key, json.dumps(message, ensure_ascii=False))
-    client.expire(key, REDIS_TTL_SECONDS)
+    chat_store.append_message(session_id, message)
 
 
 @app.middleware('http')

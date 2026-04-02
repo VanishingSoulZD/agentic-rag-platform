@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from app.llm_client import AsyncLLMClient
+from app.memory import ChatStoreConfig, HybridChatStore
 
 MODEL_NAME = "all-MiniLM-L6-v2"
 ARTIFACT_DIR = Path("app/retrieval/artifacts")
@@ -21,8 +23,13 @@ model = SentenceTransformer(MODEL_NAME)
 index = faiss.read_index(str(INDEX_PATH))
 chunks = json.loads(CHUNKS_PATH.read_text(encoding="utf-8"))
 llm_client = AsyncLLMClient()
-
-memory_store: dict[str, list[dict[str, str]]] = {}
+chat_store = HybridChatStore(
+    ChatStoreConfig(
+        redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
+        key_prefix="retrieval:chat:memory:",
+        ttl_seconds=24 * 60 * 60,
+    )
+)
 
 
 def _encode(texts: list[str]) -> np.ndarray:
@@ -66,7 +73,8 @@ async def ask(session_id: str, query: str) -> dict[str, Any]:
     top_docs = retrieve(query)
     context = "\n\n".join([f"[Doc {d['doc_id']}] {d['text']}" for d in top_docs])
 
-    history = memory_store.get(session_id, [])
+    history = chat_store.get_memory(session_id)
+
     messages = [
         {
             "role": "system",
@@ -80,12 +88,8 @@ async def ask(session_id: str, query: str) -> dict[str, Any]:
     ]
 
     llm_result = await llm_client.chat(messages)
-    memory_store.setdefault(session_id, []).extend(
-        [
-            {"role": "user", "content": query},
-            {"role": "assistant", "content": llm_result.answer},
-        ]
-    )
+    chat_store.append_message(session_id, {"role": "user", "content": query})
+    chat_store.append_message(session_id, {"role": "assistant", "content": llm_result.answer})
 
     return {
         "answer": llm_result.answer,
