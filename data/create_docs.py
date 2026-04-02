@@ -1,4 +1,5 @@
 import os
+
 # AI 应用工程/检索系统/分布式系统/机器学习基础/AI 应用方向
 docs = [
     "FastAPI is a modern Python web framework designed for building APIs quickly and efficiently. It is built on top of Starlette and Pydantic, providing automatic validation, serialization, and interactive API documentation. Developers often choose FastAPI because of its high performance, type safety, and ease of use when creating microservices or AI model serving APIs.",
@@ -53,7 +54,7 @@ docs = [
     "Artificial intelligence continues to evolve rapidly. Advances in large language models and multimodal systems are transforming how humans interact with technology.",
 ]
 
-os.makedirs("data/docs", exist_ok=True)
+os.makedirs("docs", exist_ok=True)
 
 for i, text in enumerate(docs, 1):
     with open(f"data/docs/doc{i}.txt", "w") as f:
