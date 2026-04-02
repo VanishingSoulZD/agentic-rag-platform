@@ -205,9 +205,9 @@ async def _rewrite_query_with_history(query: str, history: list[dict[str, str]])
 
 
 def _build_rag_messages(
-    query: str,
-    history: list[dict[str, str]],
-    docs: list[dict[str, object]],
+        query: str,
+        history: list[dict[str, str]],
+        docs: list[dict[str, object]],
 ) -> list[dict[str, str]]:
     context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
     recent_history = history[-8:]
@@ -244,7 +244,7 @@ async def rag(req: RagRequest) -> dict[str, object]:
     chat_store.append_message(req.session_id, {'role': 'user', 'content': req.query})
     chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
 
-    print('Retrieved doc_ids:', doc_ids)
+    logger.info(f'Retrieved {doc_ids=}')
 
     return {
         'session_id': req.session_id,

@@ -2,7 +2,6 @@ import asyncio
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -222,9 +221,9 @@ def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    response = client.post('/rag', json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
+    response = client.post('/rag',
+                           json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
     assert body['answer'] == 'RAG final answer'
     assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
-

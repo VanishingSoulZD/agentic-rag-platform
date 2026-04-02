@@ -28,7 +28,7 @@ class InMemoryChatStore:
         history = self._data.setdefault(session_id, [])
         history.append(message)
         if len(history) > self.max_messages:
-            self._data[session_id] = history[-self.max_messages :]
+            self._data[session_id] = history[-self.max_messages:]
 
     def get_memory(self, session_id: str) -> list[dict[str, str]]:
         return list(self._data.get(session_id, []))
