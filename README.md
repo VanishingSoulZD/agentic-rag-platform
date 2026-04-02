@@ -141,10 +141,10 @@ pytest tests/test_app_main.py
 
 ```bash
 # 1) 构建索引（50 篇文档 -> token chunk -> embedding -> FAISS）
-python -m myfaiss.create_index
+python -m app.retrieval.build_index
 
 # 2) 运行检索验收（10 条 query，检查 top-3 是否命中）
-python -m myfaiss.eval_retrieval
+python -m app.retrieval.evaluate_retrieval
 ```
 
 实现说明：

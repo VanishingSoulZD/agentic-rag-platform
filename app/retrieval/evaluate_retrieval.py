@@ -1,12 +1,12 @@
 """Simple retrieval evaluation for Day 10 acceptance.
 
 Run:
-    python -m myfaiss.eval_retrieval
+    python -m app.retrieval.evaluate_retrieval
 """
 
 from __future__ import annotations
 
-from myfaiss.rag import retrieve
+from app.retrieval.retriever import retrieve
 
 EVAL_SET = [
     {"query": "What is FAISS?", "expected_doc": "doc11.txt"},
