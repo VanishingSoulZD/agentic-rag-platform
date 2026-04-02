@@ -41,22 +41,6 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-def get_redis_client():
-    return chat_store.get_redis_client()
-
-
-def memory_key(session_id: str) -> str:
-    return chat_store.memory_key(session_id)
-
-
-def get_memory(session_id: str) -> list[dict[str, str]]:
-    return chat_store.get_memory(session_id)
-
-
-def append_message(session_id: str, message: dict[str, str]) -> None:
-    chat_store.append_message(session_id, message)
-
-
 @app.middleware('http')
 async def log_request_response(request: Request, call_next):
     request_id = request.headers.get(REQUEST_ID_HEADER, str(uuid4()))
@@ -133,17 +117,17 @@ async def chat(req: ChatRequest) -> dict[str, object]:
     # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
     await asyncio.sleep(1)
 
-    append_message(req.session_id, {'role': 'user', 'content': req.message})
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
 
-    history = get_memory(req.session_id)
+    history = chat_store.get_memory(req.session_id)
     llm_result = await llm_client.chat(history)
 
-    append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
 
     return {
         'answer': llm_result.answer,
         'session_id': req.session_id,
-        'history': get_memory(req.session_id),
+        'history': chat_store.get_memory(req.session_id),
         'use': {
             'model': llm_result.model,
             'mock': llm_result.mock,
@@ -156,8 +140,8 @@ async def chat(req: ChatRequest) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest):
-    append_message(req.session_id, {'role': 'user', 'content': req.message})
-    history = get_memory(req.session_id)
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
+    history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
         full_answer = ''
@@ -185,7 +169,7 @@ async def chat_stream(req: ChatRequest):
                 )
                 yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
 
-        append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
         yield 'data: [DONE]\n\n'
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')

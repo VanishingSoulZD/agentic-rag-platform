@@ -28,7 +28,7 @@ class InMemoryChatStore:
         history = self._data.setdefault(session_id, [])
         history.append(message)
         if len(history) > self.max_messages:
-            self._data[session_id] = history[-self.max_messages :]
+            self._data[session_id] = history[-self.max_messages:]
 
     def get_memory(self, session_id: str) -> list[dict[str, str]]:
         return list(self._data.get(session_id, []))
@@ -76,6 +76,17 @@ class HybridChatStore:
 
     def get_redis_client(self) -> redis.Redis:
         return self.redis_store.client
+
+    @property
+    def using_memory_fallback(self) -> bool:
+        return self._prefer_memory
+
+    def is_redis_available(self) -> bool:
+        try:
+            self.redis_store.client.ping()
+            return True
+        except RedisError:
+            return False
 
     def _use_memory_fallback(self, op_name: str, err: Exception) -> None:
         if not self._prefer_memory:
