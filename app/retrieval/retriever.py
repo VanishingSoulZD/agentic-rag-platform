@@ -123,6 +123,7 @@ async def ask(session_id: str, query: str) -> dict[str, Any]:
     context = "\n\n".join([f"[Doc {d['doc_id']}] {d['text']}" for d in top_docs])
 
     history = chat_store.get_memory(session_id)
+
     messages = [
         {
             "role": "system",
