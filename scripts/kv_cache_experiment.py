@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Day 9 - KV Cache experiment with explicit prefill/decode timing segments.
+"""KV Cache experiment with explicit prefill/decode timing segments.
 
 This script builds a tiny decoder-only attention simulation and measures:
 1) Prefill (process long history and build KV cache)
@@ -113,7 +113,7 @@ def main() -> None:
     parser.add_argument("--history-tokens", type=int, default=1024)
     parser.add_argument("--gen-tokens", type=int, default=64)
     parser.add_argument("--d-model", type=int, default=256)
-    parser.add_argument("--out", default="reports/day9_kv_cache_results.json")
+    parser.add_argument("--out", default="reports/kv_cache_results.json")
     args = parser.parse_args()
 
     torch.set_num_threads(1)
