@@ -1,0 +1,14 @@
+{
+  "device": "cpu",
+  "dtype": "float32",
+  "d_model": 256,
+  "history_tokens": 1024,
+  "gen_tokens": 64,
+  "timing": {
+    "prefill_s": 0.0898,
+    "decode_s": 0.0236,
+    "total_s": 0.1134,
+    "prefill_ratio": 0.7917,
+    "decode_ratio": 0.2083
+  }
+}
