@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from uuid import uuid4
 
 import redis
 from fastapi import FastAPI, Request
@@ -11,17 +12,16 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
+from app.logging_setup import configure_logging, reset_request_id, set_request_id
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s | %(levelname)s | %(message)s',
-)
+configure_logging()
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
 REDIS_TTL_SECONDS = 24 * 60 * 60
 REDIS_KEY_PREFIX = 'chat:memory:'
+REQUEST_ID_HEADER = 'X-Request-ID'
 
 redis_client: redis.Redis | None = None
 llm_client = AsyncLLMClient(
@@ -61,20 +61,41 @@ def append_message(session_id: str, message: dict[str, str]) -> None:
 
 @app.middleware('http')
 async def log_request_response(request: Request, call_next):
+    request_id = request.headers.get(REQUEST_ID_HEADER, str(uuid4()))
+    token = set_request_id(request_id)
     start = time.perf_counter()
-    logger.info('request method=%s path=%s', request.method, request.url.path)
 
-    response = await call_next(request)
-
-    elapsed_ms = (time.perf_counter() - start) * 1000
     logger.info(
-        'response method=%s path=%s status=%s elapsed_ms=%.2f',
+        'request_start method=%s path=%s client=%s',
         request.method,
         request.url.path,
-        response.status_code,
-        elapsed_ms,
+        request.client.host if request.client else '-',
     )
-    return response
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        logger.exception(
+            'request_failed method=%s path=%s elapsed_ms=%.2f',
+            request.method,
+            request.url.path,
+            elapsed_ms,
+        )
+        raise
+    else:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        response.headers[REQUEST_ID_HEADER] = request_id
+        logger.info(
+            'request_end method=%s path=%s status=%s elapsed_ms=%.2f',
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        return response
+    finally:
+        reset_request_id(token)
 
 
 @app.exception_handler(RequestValidationError)

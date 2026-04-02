@@ -38,6 +38,14 @@ def test_ping_returns_200_and_status_ok() -> None:
     assert response.json() == {'status': 'ok'}
 
 
+
+
+def test_ping_response_contains_request_id_header() -> None:
+    response = client.get('/ping')
+
+    assert response.status_code == 200
+    assert response.headers.get('X-Request-ID')
+
 def test_chat_returns_200_and_answer_with_session_id() -> None:
     _require_redis()
     session_id = 'test_chat_returns_200_and_answer_with_session_id'
