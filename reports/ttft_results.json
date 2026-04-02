@@ -1,0 +1,72 @@
+{
+  "provider": "openai_compatible_cloud_api",
+  "base_url": "https://api.fireworks.ai/inference/v1",
+  "openai_model": "accounts/fireworks/models/deepseek-v3p1",
+  "runs_per_prompt": 3,
+  "metrics": [
+    {
+      "prompt_type": "short",
+      "run_id": 1,
+      "ttft_ms": 6438.07904102141,
+      "gen_seconds": 0.9048499589844141,
+      "token_per_sec": 234.29298735664932,
+      "output_tokens": 212
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 1,
+      "ttft_ms": 8880.597125011263,
+      "gen_seconds": 0.7159616249846295,
+      "token_per_sec": 444.1578834715156,
+      "output_tokens": 318
+    },
+    {
+      "prompt_type": "short",
+      "run_id": 2,
+      "ttft_ms": 6679.3515420285985,
+      "gen_seconds": 1.7986501659906935,
+      "token_per_sec": 113.97435914787039,
+      "output_tokens": 205
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 2,
+      "ttft_ms": 8892.477624991443,
+      "gen_seconds": 0.6300392500124872,
+      "token_per_sec": 695.194783485821,
+      "output_tokens": 438
+    },
+    {
+      "prompt_type": "short",
+      "run_id": 3,
+      "ttft_ms": 5787.464374996489,
+      "gen_seconds": 1.2148940410115756,
+      "token_per_sec": 170.3852295033421,
+      "output_tokens": 207
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 3,
+      "ttft_ms": 17867.331709014252,
+      "gen_seconds": 0.4760494160000235,
+      "token_per_sec": 1417.9200253445258,
+      "output_tokens": 675
+    }
+  ],
+  "summary": {
+    "short": {
+      "runs": 3,
+      "avg_ttft_ms": 6301.63,
+      "p50_ttft_ms": 6438.08,
+      "avg_token_per_sec": 172.88,
+      "p50_token_per_sec": 170.39
+    },
+    "long": {
+      "runs": 3,
+      "avg_ttft_ms": 11880.14,
+      "p50_ttft_ms": 8892.48,
+      "avg_token_per_sec": 852.42,
+      "p50_token_per_sec": 695.19
+    }
+  }
+}
