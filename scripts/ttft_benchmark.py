@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
+"""benchmark on real cloud API (OpenAI-compatible).
 
+- Measures TTFT and decode speed in token/s for short vs long prompts
+"""
 
 from __future__ import annotations
 
