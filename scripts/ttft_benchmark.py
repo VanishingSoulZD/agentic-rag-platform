@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Day 8 benchmark on real cloud API (OpenAI-compatible).
 
-- Loads OPENAI_API_KEY / OPENAI_API_BASE / OPENAI_MODEL from .env
-- Measures TTFT and decode speed in token/s for short vs long prompts
-"""
 
 from __future__ import annotations
 
@@ -14,21 +10,16 @@ import os
 import statistics
 import time
 from dataclasses import asdict, dataclass
-from pathlib import Path
 
 import tiktoken
-from dotenv import load_dotenv
 from openai import AsyncOpenAI, BadRequestError
-
-ROOT = Path(__file__).resolve().parents[1]
-load_dotenv(ROOT / ".env")
 
 SHORT_PROMPT = "请用两句话解释 Prefill 和 Decode 的区别。"
 LONG_PROMPT = (
-    "你是推理系统课程助教。请阅读下面背景并最终只输出三行总结。\n"
-    + "背景："
-    + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 60
-    + "要求：用中文，尽量简洁。"
+        "你是推理系统课程助教。请阅读下面背景并最终只输出三行总结。\n"
+        + "背景："
+        + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 60
+        + "要求：用中文，尽量简洁。"
 )
 
 
@@ -139,7 +130,7 @@ def _build_client() -> tuple[AsyncOpenAI, str, str | None]:
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=3)
-    parser.add_argument("--out", default="reports/day8_ttft_results.json")
+    parser.add_argument("--out", default="reports/ttft_results.json")
     args = parser.parse_args()
 
     client, model, base_url = _build_client()
@@ -147,7 +138,9 @@ async def main() -> None:
 
     for i in range(1, args.runs + 1):
         metrics.append(await measure_once(client, model, SHORT_PROMPT, i, "short"))
+        await asyncio.sleep(10)
         metrics.append(await measure_once(client, model, LONG_PROMPT, i, "long"))
+        await asyncio.sleep(10)
 
     result = {
         "provider": "openai_compatible_cloud_api",
@@ -158,9 +151,7 @@ async def main() -> None:
         "summary": summarize(metrics),
     }
 
-    out_path = ROOT / args.out
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "w", encoding="utf-8") as f:
+    with open(args.out, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
