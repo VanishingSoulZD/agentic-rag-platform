@@ -136,3 +136,18 @@ pytest tests/test_app_main.py
 ```
 
 > 开发约定：后续新增接口/函数/方法时，必须同步补充对应单元测试。
+
+## Day 10：Embeddings + FAISS 入门
+
+```bash
+# 1) 构建索引（50 篇文档 -> token chunk -> embedding -> FAISS）
+python -m app.retrieval.build_index
+
+# 2) 运行检索验收（10 条 query，检查 top-3 是否命中）
+python -m app.retrieval.evaluate_retrieval
+```
+
+实现说明：
+- Embedding 模型：`SentenceTransformer("all-MiniLM-L6-v2")`
+- 分块方式：`tiktoken.get_encoding("cl100k_base")` + `chunk_by_token`
+- 检索流程：`FAISS top-k` + `cosine rerank` + 文档级 top-3 聚合
