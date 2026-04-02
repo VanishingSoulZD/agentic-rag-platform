@@ -5,7 +5,6 @@ import os
 import time
 from uuid import uuid4
 
-import redis
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -13,6 +12,8 @@ from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
+from app.memory import ChatStoreConfig, HybridChatStore
+from app.retrieval.retriever import rag_search
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -23,7 +24,13 @@ REDIS_TTL_SECONDS = 24 * 60 * 60
 REDIS_KEY_PREFIX = 'chat:memory:'
 REQUEST_ID_HEADER = 'X-Request-ID'
 
-redis_client: redis.Redis | None = None
+chat_store = HybridChatStore(
+    ChatStoreConfig(
+        redis_url=os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0'),
+        key_prefix=REDIS_KEY_PREFIX,
+        ttl_seconds=REDIS_TTL_SECONDS,
+    )
+)
 llm_client = AsyncLLMClient(
     timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
@@ -35,28 +42,11 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-def get_redis_client() -> redis.Redis:
-    global redis_client
-    if redis_client is None:
-        redis_url = os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0')
-        redis_client = redis.from_url(redis_url, decode_responses=True)
-    return redis_client
-
-
-def memory_key(session_id: str) -> str:
-    return f'{REDIS_KEY_PREFIX}{session_id}'
-
-
-def get_memory(session_id: str) -> list[dict[str, str]]:
-    raw_messages = get_redis_client().lrange(memory_key(session_id), 0, -1)
-    return [json.loads(item) for item in raw_messages]
-
-
-def append_message(session_id: str, message: dict[str, str]) -> None:
-    client = get_redis_client()
-    key = memory_key(session_id)
-    client.rpush(key, json.dumps(message, ensure_ascii=False))
-    client.expire(key, REDIS_TTL_SECONDS)
+class RagRequest(BaseModel):
+    query: str
+    session_id: str
+    k: int = 5
+    rewrite_query: bool = True
 
 
 @app.middleware('http')
@@ -135,17 +125,17 @@ async def chat(req: ChatRequest) -> dict[str, object]:
     # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
     await asyncio.sleep(1)
 
-    append_message(req.session_id, {'role': 'user', 'content': req.message})
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
 
-    history = get_memory(req.session_id)
+    history = chat_store.get_memory(req.session_id)
     llm_result = await llm_client.chat(history)
 
-    append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
 
     return {
         'answer': llm_result.answer,
         'session_id': req.session_id,
-        'history': get_memory(req.session_id),
+        'history': chat_store.get_memory(req.session_id),
         'use': {
             'model': llm_result.model,
             'mock': llm_result.mock,
@@ -158,8 +148,8 @@ async def chat(req: ChatRequest) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest):
-    append_message(req.session_id, {'role': 'user', 'content': req.message})
-    history = get_memory(req.session_id)
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
+    history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
         full_answer = ''
@@ -187,7 +177,87 @@ async def chat_stream(req: ChatRequest):
                 )
                 yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
 
-        append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
         yield 'data: [DONE]\n\n'
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
+
+
+async def _rewrite_query_with_history(query: str, history: list[dict[str, str]]) -> str:
+    if not history:
+        return query
+
+    recent_history = history[-6:]
+    messages = [
+        {
+            'role': 'system',
+            'content': (
+                'Rewrite the latest user query into a standalone search query. '
+                'Return only rewritten query text.'
+            ),
+        },
+        *recent_history,
+        {'role': 'user', 'content': query},
+    ]
+    result = await llm_client.chat(messages)
+    rewritten = result.answer.strip()
+    return rewritten or query
+
+
+def _build_rag_messages(
+    query: str,
+    history: list[dict[str, str]],
+    docs: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
+    recent_history = history[-8:]
+    return [
+        {
+            'role': 'system',
+            'content': (
+                'You are a RAG assistant. Answer with retrieved context + conversation history only. '
+                'If context does not contain the answer, say: I don\'t know.'
+            ),
+        },
+        *recent_history,
+        {
+            'role': 'user',
+            'content': f"Retrieved context:\n{context}\n\nQuestion: {query}",
+        },
+    ]
+
+
+@app.post('/rag')
+async def rag(req: RagRequest) -> dict[str, object]:
+    history = chat_store.get_memory(req.session_id)
+    rewritten_query = req.query
+    if req.rewrite_query:
+        rewritten_query = await _rewrite_query_with_history(req.query, history)
+
+    retrieval_result = rag_search(rewritten_query, k=req.k)
+    docs = retrieval_result['docs']
+    doc_ids = retrieval_result['doc_ids']
+
+    prompt_messages = _build_rag_messages(req.query, history, docs)
+    llm_result = await llm_client.chat(prompt_messages)
+
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.query})
+    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+
+    print('Retrieved doc_ids:', doc_ids)
+
+    return {
+        'session_id': req.session_id,
+        'query': req.query,
+        'rewritten_query': rewritten_query,
+        'answer': llm_result.answer,
+        'sources': docs,
+        'doc_ids': doc_ids,
+        'use': {
+            'model': llm_result.model,
+            'mock': llm_result.mock,
+            'prompt_tokens': llm_result.prompt_tokens,
+            'completion_tokens': llm_result.completion_tokens,
+            'total_tokens': llm_result.total_tokens,
+        },
+    }
