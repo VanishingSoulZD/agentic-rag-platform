@@ -41,7 +41,6 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-
 @app.middleware('http')
 async def log_request_response(request: Request, call_next):
     request_id = request.headers.get(REQUEST_ID_HEADER, str(uuid4()))
