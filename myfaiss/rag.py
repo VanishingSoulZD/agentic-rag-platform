@@ -1,44 +1,74 @@
+from __future__ import annotations
+
 import json
+from collections import defaultdict
+from pathlib import Path
+
 import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from myllm import MyLLM
+
 llm = MyLLM()
-# 1. 初始化
-model = SentenceTransformer("all-MiniLM-L6-v2")
-index = faiss.read_index("myfaiss/index.faiss")
-with open("myfaiss/chunks.json") as f:
-    chunks = json.load(f)
+
+MODEL_NAME = "all-MiniLM-L6-v2"
+INDEX_PATH = Path("myfaiss/index.faiss")
+CHUNKS_PATH = Path("myfaiss/chunks.json")
+
+model = SentenceTransformer(MODEL_NAME)
+index = faiss.read_index(str(INDEX_PATH))
+chunks = json.loads(CHUNKS_PATH.read_text(encoding="utf-8"))
+
+memory_store: dict[str, list[dict[str, str]]] = {}
 
 
+def _chunk_embeddings(texts: list[str]) -> np.ndarray:
+    return model.encode(texts, convert_to_numpy=True, normalize_embeddings=True).astype(np.float32)
 
-# 2. 多轮 memory
-memory_store = {}  # session_id -> list of query/answer pairs
 
-# 3. top-k + rerank
-def retrieve(query, k=10, rerank_k=3):
-    q_emb = model.encode([query])
-    distances, indices = index.search(np.array(q_emb), k)
-    top_chunks = [chunks[i] for i in indices[0]]
+def retrieve(query: str, k: int = 12, rerank_k: int = 6, top_docs: int = 3) -> list[dict]:
+    """Retrieve candidates with FAISS top-k and rerank to doc-level top-3."""
+    q_emb = _chunk_embeddings([query])
+    scores, indices = index.search(q_emb, k)
 
-    # rerank 按 cosine similarity 精细排序
-    q_norm = q_emb / np.linalg.norm(q_emb, axis=1, keepdims=True)
-    e_norm = np.array([model.encode(c["text"]) for c in top_chunks])
-    e_norm = e_norm / np.linalg.norm(e_norm, axis=1, keepdims=True)
-    sims = (q_norm @ e_norm.T)[0]
-    sorted_idx = np.argsort(-sims)[:rerank_k]
-    return [top_chunks[i] for i in sorted_idx]
+    candidates = [chunks[i] for i in indices[0] if i >= 0]
+    if not candidates:
+        return []
 
-def ask(session_id, query):
-    top_chunks = retrieve(query)
+    c_embs = _chunk_embeddings([c["text"] for c in candidates])
+    rerank_scores = (q_emb @ c_embs.T)[0]
 
-    context = "\n\n".join([
-        f"[Doc {c['doc_id']}] {c['text']}"
-        for c in top_chunks
-    ])
+    reranked = sorted(
+        [
+            {
+                **candidate,
+                "faiss_score": float(scores[0][i]),
+                "rerank_score": float(rerank_scores[i]),
+            }
+            for i, candidate in enumerate(candidates)
+        ],
+        key=lambda x: x["rerank_score"],
+        reverse=True,
+    )[:rerank_k]
 
-    # 追加多轮历史
+    # aggregate to document-level ranking (best chunk wins)
+    per_doc: dict[str, dict] = defaultdict(dict)
+    for item in reranked:
+        doc_id = item["doc_id"]
+        current = per_doc.get(doc_id)
+        if not current or item["rerank_score"] > current["rerank_score"]:
+            per_doc[doc_id] = item
+
+    doc_ranked = sorted(per_doc.values(), key=lambda x: x["rerank_score"], reverse=True)
+    return doc_ranked[:top_docs]
+
+
+def ask(session_id: str, query: str) -> dict:
+    top_docs = retrieve(query)
+
+    context = "\n\n".join([f"[Doc {d['doc_id']}] {d['text']}" for d in top_docs])
+
     history = memory_store.get(session_id, [])
     history_text = "\n".join([f"Q: {h['query']}\nA: {h['answer']}" for h in history])
 
@@ -52,7 +82,7 @@ If the answer is NOT explicitly stated in the context, say:
 
 Do NOT make up information.
 Do NOT use prior knowledge.
- 
+
 Cite sources like [doc3.txt] when possible.
 
 Context:
@@ -65,12 +95,18 @@ User question:
 {query}
 """
 
-
     answer = llm.llm(prompt)
-
-    # 保存 memory
     memory_store.setdefault(session_id, []).append({"query": query, "answer": answer})
-    return {
-        "answer": answer,
-        "docs": top_chunks
-    }
+    return {"answer": answer, "docs": top_docs}
+
+
+if __name__ == "__main__":
+    demo_queries = [
+        "What does FAISS do?",
+        "How does semantic search differ from keyword search?",
+        "What is FastAPI used for?",
+    ]
+    for query in demo_queries:
+        results = retrieve(query)
+        print(f"\nQ: {query}")
+        print([r["doc_id"] for r in results])
