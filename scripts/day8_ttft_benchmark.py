@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Day 8 benchmark: TTFT + decode speed (short vs long prompt).
+"""Day 8 benchmark on real cloud API (OpenAI-compatible).
 
-默认直接调用 `app.llm_client.AsyncLLMClient`，不依赖 Redis。
-如需测 FastAPI SSE，可加 `--mode sse`。
+- Loads OPENAI_API_KEY / OPENAI_API_BASE / OPENAI_MODEL from .env
+- Measures TTFT and decode speed in token/s for short vs long prompts
 """
 
 from __future__ import annotations
@@ -14,23 +14,20 @@ import os
 import statistics
 import time
 from dataclasses import asdict, dataclass
-
-import httpx
-
-import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+import tiktoken
+from dotenv import load_dotenv
+from openai import AsyncOpenAI, BadRequestError
 
-from app.llm_client import AsyncLLMClient
+ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 
 SHORT_PROMPT = "请用两句话解释 Prefill 和 Decode 的区别。"
 LONG_PROMPT = (
     "你是推理系统课程助教。请阅读下面背景并最终只输出三行总结。\n"
     + "背景："
-    + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 20
+    + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 60
     + "要求：用中文，尽量简洁。"
 )
 
@@ -41,67 +38,66 @@ class RunMetric:
     run_id: int
     ttft_ms: float
     gen_seconds: float
-    chars_per_sec: float
-    output_chars: int
+    token_per_sec: float
+    output_tokens: int
 
 
-async def measure_llm_client(prompt: str, run_id: int, prompt_type: str) -> RunMetric:
-    client = AsyncLLMClient()
-    messages = [{"role": "user", "content": prompt}]
+def _encoding_for_model(model: str):
+    try:
+        return tiktoken.encoding_for_model(model)
+    except Exception:
+        return tiktoken.get_encoding("cl100k_base")
 
+
+async def _create_stream(client: AsyncOpenAI, model: str, prompt: str, with_usage: bool):
+    kwargs = dict(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        stream=True,
+        temperature=0,
+    )
+    if with_usage:
+        kwargs["stream_options"] = {"include_usage": True}
+    return await client.chat.completions.create(**kwargs)
+
+
+async def measure_once(client: AsyncOpenAI, model: str, prompt: str, run_id: int, prompt_type: str) -> RunMetric:
     start = time.perf_counter()
     first_token_at = None
-    out_chars = 0
+    output_text_parts: list[str] = []
+    usage_completion_tokens: int | None = None
 
-    async for event in client.stream_chat(messages):
-        if event.get("type") == "token":
-            if first_token_at is None:
-                first_token_at = time.perf_counter()
-            out_chars += len(event.get("content", ""))
-        elif event.get("type") == "usage":
-            break
+    try:
+        stream = await _create_stream(client, model, prompt, with_usage=True)
+    except BadRequestError:
+        stream = await _create_stream(client, model, prompt, with_usage=False)
 
-    end = time.perf_counter()
-    if first_token_at is None:
-        raise RuntimeError("No token received in llm_client mode")
+    async for chunk in stream:
+        if getattr(chunk, "usage", None) and chunk.usage.completion_tokens is not None:
+            usage_completion_tokens = chunk.usage.completion_tokens
 
-    ttft = (first_token_at - start) * 1000
-    gen_seconds = max(end - first_token_at, 1e-9)
-    return RunMetric(prompt_type, run_id, ttft, gen_seconds, out_chars / gen_seconds, out_chars)
-
-
-def measure_sse(base_url: str, prompt: str, run_id: int, prompt_type: str, session_prefix: str) -> RunMetric:
-    url = f"{base_url.rstrip('/')}/chat/stream"
-    payload = {"message": prompt, "session_id": f"{session_prefix}-{prompt_type}-{run_id}"}
-
-    start = time.perf_counter()
-    first_token_at = None
-    out_chars = 0
-
-    with httpx.Client(timeout=120.0) as hclient:
-        with hclient.stream("POST", url, json=payload) as resp:
-            resp.raise_for_status()
-            for raw_line in resp.iter_lines():
-                if not raw_line:
-                    continue
-                line = raw_line.strip()
-                if not line.startswith("data: "):
-                    continue
-                data = json.loads(line[6:])
-                if data.get("type") == "token":
-                    if first_token_at is None:
-                        first_token_at = time.perf_counter()
-                    out_chars += len(data.get("content", ""))
-                elif data.get("type") == "usage":
-                    break
+        if chunk.choices:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                if first_token_at is None:
+                    first_token_at = time.perf_counter()
+                output_text_parts.append(delta)
 
     end = time.perf_counter()
-    if first_token_at is None:
-        raise RuntimeError("No token received in sse mode")
 
-    ttft = (first_token_at - start) * 1000
+    if first_token_at is None:
+        raise RuntimeError("No token received from provider stream")
+
+    output_text = "".join(output_text_parts)
+    output_tokens = usage_completion_tokens
+    if output_tokens is None:
+        enc = _encoding_for_model(model)
+        output_tokens = len(enc.encode(output_text))
+
+    ttft_ms = (first_token_at - start) * 1000
     gen_seconds = max(end - first_token_at, 1e-9)
-    return RunMetric(prompt_type, run_id, ttft, gen_seconds, out_chars / gen_seconds, out_chars)
+    token_per_sec = output_tokens / gen_seconds
+    return RunMetric(prompt_type, run_id, ttft_ms, gen_seconds, token_per_sec, output_tokens)
 
 
 def summarize(metrics: list[RunMetric]) -> dict[str, dict[str, float]]:
@@ -112,45 +108,59 @@ def summarize(metrics: list[RunMetric]) -> dict[str, dict[str, float]]:
     out: dict[str, dict[str, float]] = {}
     for key, vals in grouped.items():
         ttfts = [v.ttft_ms for v in vals]
-        speeds = [v.chars_per_sec for v in vals]
+        tps = [v.token_per_sec for v in vals]
         out[key] = {
             "runs": len(vals),
             "avg_ttft_ms": round(statistics.mean(ttfts), 2),
             "p50_ttft_ms": round(statistics.median(ttfts), 2),
-            "avg_chars_per_sec": round(statistics.mean(speeds), 2),
-            "p50_chars_per_sec": round(statistics.median(speeds), 2),
+            "avg_token_per_sec": round(statistics.mean(tps), 2),
+            "p50_token_per_sec": round(statistics.median(tps), 2),
         }
     return out
 
 
+def _build_client() -> tuple[AsyncOpenAI, str, str | None]:
+    api_key = os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("OPENAI_API_BASE")
+    model = os.getenv("OPENAI_MODEL")
+    mock_llm = (os.getenv("MOCK_LLM") or "").lower() in {"1", "true", "yes"}
+
+    if mock_llm:
+        raise RuntimeError("MOCK_LLM=true，当前脚本要求真实云 API，请关闭 mock 后重试。")
+    if not api_key:
+        raise RuntimeError("未找到 OPENAI_API_KEY（请在 .env 配置）")
+    if not model:
+        raise RuntimeError("未找到 OPENAI_MODEL（请在 .env 配置）")
+
+    client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+    return client, model, base_url
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["llm_client", "sse"], default="llm_client")
-    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--runs", type=int, default=5)
-    parser.add_argument("--session-prefix", default="day8")
+    parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--out", default="reports/day8_ttft_results.json")
     args = parser.parse_args()
 
+    client, model, base_url = _build_client()
     metrics: list[RunMetric] = []
+
     for i in range(1, args.runs + 1):
-        if args.mode == "llm_client":
-            metrics.append(await measure_llm_client(SHORT_PROMPT, i, "short"))
-            metrics.append(await measure_llm_client(LONG_PROMPT, i, "long"))
-        else:
-            metrics.append(measure_sse(args.base_url, SHORT_PROMPT, i, "short", args.session_prefix))
-            metrics.append(measure_sse(args.base_url, LONG_PROMPT, i, "long", args.session_prefix))
+        metrics.append(await measure_once(client, model, SHORT_PROMPT, i, "short"))
+        metrics.append(await measure_once(client, model, LONG_PROMPT, i, "long"))
 
     result = {
-        "mode": args.mode,
-        "openai_model": os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
-        "mock_mode": os.getenv("MOCK_LLM", "") or ("true" if not os.getenv("OPENAI_API_KEY") else "false"),
+        "provider": "openai_compatible_cloud_api",
+        "base_url": base_url,
+        "openai_model": model,
         "runs_per_prompt": args.runs,
         "metrics": [asdict(m) for m in metrics],
         "summary": summarize(metrics),
     }
 
-    with open(args.out, "w", encoding="utf-8") as f:
+    out_path = ROOT / args.out
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
