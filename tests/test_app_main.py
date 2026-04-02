@@ -195,3 +195,25 @@ def test_chat_stream_outputs_token_then_usage_events() -> None:
     assert history[-1]['content']
 
     _cleanup_session(session_id)
+
+
+def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
+    async def _fake_rag_search(query: str, k: int = 5):
+        return {
+            'answer': f'RAG answer for: {query}',
+            'doc_ids': ['doc1.txt', 'doc2.txt'],
+            'docs': [
+                {'doc_id': 'doc1.txt', 'text': 'a'},
+                {'doc_id': 'doc2.txt', 'text': 'b'},
+            ],
+            'use': {'model': 'mock', 'mock': True, 'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
+        }
+
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+
+    response = client.post('/rag', json={'query': 'what is rag?', 'k': 3})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['answer'].startswith('RAG answer for:')
+    assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
+

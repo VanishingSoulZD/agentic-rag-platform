@@ -137,7 +137,7 @@ pytest tests/test_app_main.py
 
 > 开发约定：后续新增接口/函数/方法时，必须同步补充对应单元测试。
 
-## Day 10：Embeddings + FAISS 入门
+## Embeddings + FAISS 入门
 
 ```bash
 # 1) 构建索引（50 篇文档 -> token chunk -> embedding -> FAISS）
@@ -148,6 +148,21 @@ python -m app.retrieval.evaluate_retrieval
 ```
 
 实现说明：
+
 - Embedding 模型：`SentenceTransformer("all-MiniLM-L6-v2")`
 - 分块方式：`tiktoken.get_encoding("cl100k_base")` + `chunk_by_token`
 - 检索流程：`FAISS top-k` + `cosine rerank` + 文档级 top-3 聚合
+
+## RAG pipeline（检索 + prompt 拼接）
+
+```bash
+curl -X POST http://127.0.0.1:8000/rag \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is FAISS?", "k":5}'
+```
+
+说明：
+
+- `/rag` 会先做向量检索，再把 top-k 文档拼接到 prompt。
+- 随后调用 LLM 生成答案，并在服务端打印被检索的 `doc_ids`。
+

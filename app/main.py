@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
 from app.memory import ChatStoreConfig, HybridChatStore
+from app.retrieval.retriever import rag_search
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -39,6 +40,11 @@ llm_client = AsyncLLMClient(
 class ChatRequest(BaseModel):
     message: str
     session_id: str
+
+
+class RagRequest(BaseModel):
+    query: str
+    k: int = 5
 
 
 @app.middleware('http')
@@ -173,3 +179,10 @@ async def chat_stream(req: ChatRequest):
         yield 'data: [DONE]\n\n'
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
+
+
+@app.post('/rag')
+async def rag(req: RagRequest) -> dict[str, object]:
+    result = await rag_search(req.query, k=req.k)
+    print('Retrieved doc_ids:', result.get('doc_ids', []))
+    return result
