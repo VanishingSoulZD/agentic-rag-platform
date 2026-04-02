@@ -44,7 +44,9 @@ class ChatRequest(BaseModel):
 
 class RagRequest(BaseModel):
     query: str
+    session_id: str
     k: int = 5
+    rewrite_query: bool = True
 
 
 @app.middleware('http')
@@ -181,8 +183,81 @@ async def chat_stream(req: ChatRequest):
     return StreamingResponse(event_gen(), media_type='text/event-stream')
 
 
+async def _rewrite_query_with_history(query: str, history: list[dict[str, str]]) -> str:
+    if not history:
+        return query
+
+    recent_history = history[-6:]
+    messages = [
+        {
+            'role': 'system',
+            'content': (
+                'Rewrite the latest user query into a standalone search query. '
+                'Return only rewritten query text.'
+            ),
+        },
+        *recent_history,
+        {'role': 'user', 'content': query},
+    ]
+    result = await llm_client.chat(messages)
+    rewritten = result.answer.strip()
+    return rewritten or query
+
+
+def _build_rag_messages(
+        query: str,
+        history: list[dict[str, str]],
+        docs: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
+    recent_history = history[-8:]
+    return [
+        {
+            'role': 'system',
+            'content': (
+                'You are a RAG assistant. Answer with retrieved context + conversation history only. '
+                'If context does not contain the answer, say: I don\'t know.'
+            ),
+        },
+        *recent_history,
+        {
+            'role': 'user',
+            'content': f"Retrieved context:\n{context}\n\nQuestion: {query}",
+        },
+    ]
+
+
 @app.post('/rag')
 async def rag(req: RagRequest) -> dict[str, object]:
-    result = await rag_search(req.query, k=req.k)
-    print('Retrieved doc_ids:', result.get('doc_ids', []))
-    return result
+    history = chat_store.get_memory(req.session_id)
+    rewritten_query = req.query
+    if req.rewrite_query:
+        rewritten_query = await _rewrite_query_with_history(req.query, history)
+
+    retrieval_result = rag_search(rewritten_query, k=req.k)
+    docs = retrieval_result['docs']
+    doc_ids = retrieval_result['doc_ids']
+
+    prompt_messages = _build_rag_messages(req.query, history, docs)
+    llm_result = await llm_client.chat(prompt_messages)
+
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.query})
+    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+
+    logger.info(f'Retrieved {doc_ids=}')
+
+    return {
+        'session_id': req.session_id,
+        'query': req.query,
+        'rewritten_query': rewritten_query,
+        'answer': llm_result.answer,
+        'sources': docs,
+        'doc_ids': doc_ids,
+        'use': {
+            'model': llm_result.model,
+            'mock': llm_result.mock,
+            'prompt_tokens': llm_result.prompt_tokens,
+            'completion_tokens': llm_result.completion_tokens,
+            'total_tokens': llm_result.total_tokens,
+        },
+    }

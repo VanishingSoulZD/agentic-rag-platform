@@ -158,11 +158,11 @@ python -m app.retrieval.evaluate_retrieval
 ```bash
 curl -X POST http://127.0.0.1:8000/rag \
   -H 'Content-Type: application/json' \
-  -d '{"query":"What is FAISS?", "k":5}'
+  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
 ```
 
 说明：
 
-- `/rag` 会先做向量检索，再把 top-k 文档拼接到 prompt。
-- 随后调用 LLM 生成答案，并在服务端打印被检索的 `doc_ids`。
+- `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
+- 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 

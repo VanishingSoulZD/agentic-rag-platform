@@ -2,7 +2,6 @@ import asyncio
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -198,22 +197,33 @@ def test_chat_stream_outputs_token_then_usage_events() -> None:
 
 
 def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
-    async def _fake_rag_search(query: str, k: int = 5):
+    class _FakeLLMResult:
+        answer = 'RAG final answer'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 1
+        completion_tokens = 1
+        total_tokens = 2
+
+    def _fake_rag_search(query: str, k: int = 5):
         return {
-            'answer': f'RAG answer for: {query}',
+            'query': query,
             'doc_ids': ['doc1.txt', 'doc2.txt'],
             'docs': [
                 {'doc_id': 'doc1.txt', 'text': 'a'},
                 {'doc_id': 'doc2.txt', 'text': 'b'},
             ],
-            'use': {'model': 'mock', 'mock': True, 'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
         }
 
-    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
 
-    response = client.post('/rag', json={'query': 'what is rag?', 'k': 3})
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    response = client.post('/rag',
+                           json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
-    assert body['answer'].startswith('RAG answer for:')
+    assert body['answer'] == 'RAG final answer'
     assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
-

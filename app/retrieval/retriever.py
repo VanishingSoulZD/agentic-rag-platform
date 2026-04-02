@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 from collections import defaultdict
 from functools import lru_cache
 from pathlib import Path
@@ -12,22 +10,10 @@ import faiss
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
-from app.llm_client import AsyncLLMClient
-from app.memory import ChatStoreConfig, HybridChatStore
-
 MODEL_NAME = "all-MiniLM-L6-v2"
 ARTIFACT_DIR = Path("app/retrieval/artifacts")
 INDEX_PATH = ARTIFACT_DIR / "index.faiss"
 CHUNKS_PATH = ARTIFACT_DIR / "chunks.json"
-
-llm_client = AsyncLLMClient()
-chat_store = HybridChatStore(
-    ChatStoreConfig(
-        redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
-        key_prefix="retrieval:chat:memory:",
-        ttl_seconds=24 * 60 * 60,
-    )
-)
 
 
 @lru_cache(maxsize=1)
@@ -87,71 +73,11 @@ def retrieve(query: str, k: int = 12, rerank_k: int = 6, top_docs: int = 3) -> l
     return sorted(per_doc.values(), key=lambda item: item["rerank_score"], reverse=True)[:top_docs]
 
 
-async def rag_search(query: str, k: int = 5) -> dict[str, Any]:
+def rag_search(query: str, k: int = 5) -> dict[str, Any]:
+    """Pure retrieval for RAG pipeline: retrieve + rerank, no LLM generation."""
     docs = retrieve(query=query, k=max(k * 2, 10), rerank_k=max(k, 5), top_docs=k)
-    context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a RAG assistant. Answer only based on retrieved context. "
-                "If context lacks the answer, reply: I don't know."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"Retrieved context:\n{context}\n\nQuestion: {query}",
-        },
-    ]
-    llm_result = await llm_client.chat(messages)
     return {
-        "answer": llm_result.answer,
+        "query": query,
         "docs": docs,
         "doc_ids": [doc["doc_id"] for doc in docs],
-        "use": {
-            "model": llm_result.model,
-            "mock": llm_result.mock,
-            "prompt_tokens": llm_result.prompt_tokens,
-            "completion_tokens": llm_result.completion_tokens,
-            "total_tokens": llm_result.total_tokens,
-        },
     }
-
-
-async def ask(session_id: str, query: str) -> dict[str, Any]:
-    top_docs = retrieve(query)
-    context = "\n\n".join([f"[Doc {d['doc_id']}] {d['text']}" for d in top_docs])
-
-    history = chat_store.get_memory(session_id)
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are a QA assistant. Use only provided context. "
-                "If answer is not in context, respond with 'I don't know.'"
-            ),
-        },
-        *history,
-        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"},
-    ]
-
-    llm_result = await llm_client.chat(messages)
-    chat_store.append_message(session_id, {"role": "user", "content": query})
-    chat_store.append_message(session_id, {"role": "assistant", "content": llm_result.answer})
-
-    return {
-        "answer": llm_result.answer,
-        "docs": top_docs,
-        "use": {
-            "model": llm_result.model,
-            "mock": llm_result.mock,
-            "prompt_tokens": llm_result.prompt_tokens,
-            "completion_tokens": llm_result.completion_tokens,
-            "total_tokens": llm_result.total_tokens,
-        },
-    }
-
-
-def ask_sync(session_id: str, query: str) -> dict[str, Any]:
-    return asyncio.run(ask(session_id=session_id, query=query))
