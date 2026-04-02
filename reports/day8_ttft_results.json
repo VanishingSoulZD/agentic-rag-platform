@@ -1,0 +1,72 @@
+{
+  "mode": "llm_client",
+  "openai_model": "gpt-4.1-mini",
+  "mock_mode": "true",
+  "runs_per_prompt": 3,
+  "metrics": [
+    {
+      "prompt_type": "short",
+      "run_id": 1,
+      "ttft_ms": 0.04822899973078165,
+      "gen_seconds": 0.42359558699899935,
+      "chars_per_sec": 96.79043233303763,
+      "output_chars": 41
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 1,
+      "ttft_ms": 0.03133999962301459,
+      "gen_seconds": 9.201532412000233,
+      "chars_per_sec": 97.48376246875706,
+      "output_chars": 897
+    },
+    {
+      "prompt_type": "short",
+      "run_id": 2,
+      "ttft_ms": 0.026091000108863227,
+      "gen_seconds": 0.41917546299919195,
+      "chars_per_sec": 97.8110686790821,
+      "output_chars": 41
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 2,
+      "ttft_ms": 0.03158100116706919,
+      "gen_seconds": 9.194468376999794,
+      "chars_per_sec": 97.55865844771073,
+      "output_chars": 897
+    },
+    {
+      "prompt_type": "short",
+      "run_id": 3,
+      "ttft_ms": 0.03176700010953937,
+      "gen_seconds": 0.4270564419985021,
+      "chars_per_sec": 96.00604502798673,
+      "output_chars": 41
+    },
+    {
+      "prompt_type": "long",
+      "run_id": 3,
+      "ttft_ms": 0.024129001758410595,
+      "gen_seconds": 9.18084229499982,
+      "chars_per_sec": 97.70345368948716,
+      "output_chars": 897
+    }
+  ],
+  "summary": {
+    "short": {
+      "runs": 3,
+      "avg_ttft_ms": 0.04,
+      "p50_ttft_ms": 0.03,
+      "avg_chars_per_sec": 96.87,
+      "p50_chars_per_sec": 96.79
+    },
+    "long": {
+      "runs": 3,
+      "avg_ttft_ms": 0.03,
+      "p50_ttft_ms": 0.03,
+      "avg_chars_per_sec": 97.58,
+      "p50_chars_per_sec": 97.56
+    }
+  }
+}
