@@ -35,6 +35,7 @@ def test_agent_uses_calculator_tool_and_returns_result() -> None:
     llm = chat_openai.ChatOpenAI(
         model=os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
         api_key=openai_key,
+        base_url=os.getenv("OPENAI_API_BASE"),
         temperature=0,
     )
 

@@ -216,7 +216,8 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 日志：
 
 - 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。
-## Day 15 - LangChain 基础（Chain / Tools）
+
+## LangChain 基础（Chain / Tools）
 
 新增工程化示例模块（LangChain + LangGraph 新生态）：
 
