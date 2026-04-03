@@ -166,9 +166,7 @@ curl -X POST http://127.0.0.1:8000/rag \
 - `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
 - 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 
-
-
-## Day 12 监控埋点（TTFT/P95/usage）
+## 监控埋点（TTFT/P95/usage）
 
 新增能力：
 
@@ -181,4 +179,22 @@ curl -X POST http://127.0.0.1:8000/rag \
 python scripts/weekly_metrics_report.py   --input reports/metrics_events.csv   --output reports/weekly_metrics_report.csv
 ```
 
-周报字段：`week_start, request_count, success_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+周报字段：
+`week_start, request_count, success_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+
+## RAG 质量评估（测试集 + baseline）
+
+```bash
+python -m app.retrieval.evaluate_rag_quality
+```
+
+输出：
+
+- `reports/rag_eval_report.json`
+- `reports/rag_eval_report.md`
+
+指标：
+
+- `retrieval_precision`（Hit@k）
+- `answer_accuracy`（token-F1 阈值）
+- `bm25_retrieval_precision`（baseline 对比）
