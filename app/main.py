@@ -42,14 +42,7 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-class RagRequest(BaseModel):
-    query: str
-    session_id: str
-    k: int = 5
-    rewrite_query: bool = True
-
-
-class QueryRagRequest(BaseModel):
+class RagQueryRequest(BaseModel):
     query: str
     session_id: str
     k: int = 5
@@ -282,11 +275,6 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     }
 
 
-@app.post('/rag')
-async def rag(req: RagRequest) -> dict[str, object]:
-    return await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
-
-
-@app.post('/query_rag')
-async def query_rag(req: QueryRagRequest) -> dict[str, object]:
+@app.post('/rag/query')
+async def rag_query(req: RagQueryRequest) -> dict[str, object]:
     return await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)

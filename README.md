@@ -155,13 +155,13 @@ python -m app.retrieval.evaluate_retrieval
 ## Day 11：RAG pipeline（检索 + prompt 拼接）
 
 ```bash
-curl -X POST http://127.0.0.1:8000/rag \
+curl -X POST http://127.0.0.1:8000/rag/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
 ```
 
 说明：
-- `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
+- `/rag/query` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
 - 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 
 ## Day 13：RAG 质量评估（测试集 + baseline）
@@ -179,10 +179,10 @@ python -m app.retrieval.evaluate_rag_quality
 - `answer_accuracy`（token-F1 阈值）
 - `bm25_retrieval_precision`（baseline 对比）
 
-## Day 14：RAG 服务化（/query_rag）
+## Day 14：RAG 服务化（/rag/query）
 
 ```bash
-curl -X POST http://127.0.0.1:8000/query_rag \
+curl -X POST http://127.0.0.1:8000/rag/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
 ```

@@ -222,7 +222,7 @@ def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    response = client.post('/rag', json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
+    response = client.post('/rag/query', json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
     assert body['answer'] == 'RAG final answer'
@@ -255,7 +255,7 @@ def test_query_rag_returns_retrieval_items_and_answer(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    response = client.post('/query_rag', json={'query': 'what is faiss', 'session_id': 'qrag-s1', 'k': 2, 'rewrite_query': False})
+    response = client.post('/rag/query', json={'query': 'what is faiss', 'session_id': 'qrag-s1', 'k': 2, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
 
