@@ -1,4 +1,4 @@
-"""Day 13: RAG quality evaluation (retrieval + answer quality + baseline).
+"""RAG quality evaluation (retrieval + answer quality + baseline).
 
 Run:
     python -m app.retrieval.evaluate_rag_quality
@@ -18,9 +18,9 @@ from app.llm_client import AsyncLLMClient
 from app.retrieval.retriever import rag_search
 
 DOC_DIR = Path("data/docs")
-GOLD_PATH = Path("app/retrieval/eval/day13_gold_qa.json")
-REPORT_JSON = Path("reports/day13_rag_eval_report.json")
-REPORT_MD = Path("reports/day13_rag_eval_report.md")
+GOLD_PATH = Path("app/retrieval/eval/gold_qa.json")
+REPORT_JSON = Path("reports/rag_eval_report.json")
+REPORT_MD = Path("reports/rag_eval_report.md")
 
 
 @dataclass
@@ -178,6 +178,7 @@ async def evaluate(k: int = 3) -> dict[str, Any]:
                 "answer_ok": answer_ok,
             }
         )
+        await asyncio.sleep(10)
 
     total = len(gold)
     report = {
@@ -216,7 +217,7 @@ def write_report(report: dict[str, Any]) -> None:
 
     suggestions = _build_suggestions(report)
     md = [
-        "# Day 13 RAG 质量评估报告",
+        "# RAG 质量评估报告",
         "",
         f"- retrieval_precision: **{report['retrieval_precision']:.2%}**",
         f"- answer_accuracy: **{report['answer_accuracy']:.2%}**",

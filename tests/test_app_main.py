@@ -2,7 +2,6 @@ import asyncio
 import json
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
@@ -29,6 +28,14 @@ def test_ping_response_contains_request_id_header() -> None:
 
     assert response.status_code == 200
     assert response.headers.get('X-Request-ID')
+
+
+def test_metrics_endpoint_returns_prometheus_text() -> None:
+    response = client.get('/metrics')
+
+    assert response.status_code == 200
+    assert 'response_time_ms' in response.text
+    assert 'success_rate' in response.text
 
 
 def test_chat_returns_200_and_answer_with_session_id() -> None:
@@ -222,9 +229,9 @@ def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    response = client.post('/rag', json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
+    response = client.post('/rag',
+                           json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
     assert body['answer'] == 'RAG final answer'
     assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
-

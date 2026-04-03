@@ -1,4 +1,4 @@
-"""Simple retrieval evaluation for Day 10 acceptance.
+"""Simple retrieval evaluation for acceptance.
 
 Run:
     python -m app.retrieval.evaluate_retrieval
