@@ -5,7 +5,6 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
-from redis.exceptions import ConnectionError
 
 import app.main as main
 from app.llm_client import AsyncLLMClient
@@ -14,15 +13,8 @@ client = TestClient(main.app)
 error_client = TestClient(main.app, raise_server_exceptions=False)
 
 
-def _require_redis() -> None:
-    try:
-        main.get_redis_client().ping()
-    except ConnectionError:
-        pytest.skip('Redis is not available on 127.0.0.1:6379; start docker redis first.')
-
-
 def _cleanup_session(session_id: str) -> None:
-    main.get_redis_client().delete(main.memory_key(session_id))
+    main.chat_store.delete_session(session_id)
 
 
 def test_ping_returns_200_and_status_ok() -> None:
@@ -40,7 +32,6 @@ def test_ping_response_contains_request_id_header() -> None:
 
 
 def test_chat_returns_200_and_answer_with_session_id() -> None:
-    _require_redis()
     session_id = 'test_chat_returns_200_and_answer_with_session_id'
     _cleanup_session(session_id)
 
@@ -59,7 +50,7 @@ def test_chat_returns_200_and_answer_with_session_id() -> None:
         'total_tokens',
     }
 
-    history = main.get_memory(session_id)
+    history = main.chat_store.get_memory(session_id)
     assert len(history) == 2
     assert history[0] == {'role': 'user', 'content': 'hello'}
     assert history[-1]['role'] == 'assistant'
@@ -87,7 +78,6 @@ def test_chat_internal_error_returns_unified_format() -> None:
 
 def test_chat_concurrent_requests_do_not_serialize() -> None:
     concurrent_count = 3
-    _require_redis()
     for i in range(concurrent_count):
         _cleanup_session(f'test_chat_concurrent_requests_do_not_serialize-{i}')
 
@@ -112,7 +102,6 @@ def test_chat_concurrent_requests_do_not_serialize() -> None:
     for i in range(concurrent_count):
         _cleanup_session(f'test_chat_concurrent_requests_do_not_serialize-{i}')
 
-    # 单请求 sleep 为 1s；若串行约 3s，并发应显著小于 3s。
     assert elapsed < concurrent_count
 
 
@@ -128,9 +117,8 @@ def test_llm_client_mock_chat_returns_usage_and_answer() -> None:
     assert result.total_tokens >= result.prompt_tokens + result.completion_tokens - 1
 
 
-def test_chat_stores_multi_turn_messages_in_redis() -> None:
-    _require_redis()
-    session_id = 'test_chat_stores_multi_turn_messages_in_redis'
+def test_chat_stores_multi_turn_messages_and_ttl_when_redis_available() -> None:
+    session_id = 'test_chat_stores_multi_turn_messages_and_ttl_when_redis_available'
     _cleanup_session(session_id)
 
     response1 = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
@@ -139,35 +127,37 @@ def test_chat_stores_multi_turn_messages_in_redis() -> None:
     assert response1.status_code == 200
     assert response2.status_code == 200
 
-    history = main.get_memory(session_id)
+    history = main.chat_store.get_memory(session_id)
     assert len(history) == 4
 
-    ttl = main.get_redis_client().ttl(main.memory_key(session_id))
-    assert 0 < ttl <= main.REDIS_TTL_SECONDS
+    if not main.chat_store.using_memory_fallback and main.chat_store.is_redis_available():
+        ttl = main.chat_store.get_redis_client().ttl(main.chat_store.memory_key(session_id))
+        assert 0 < ttl <= main.REDIS_TTL_SECONDS
+    else:
+        # fallback mode: no Redis TTL, but history remains functional.
+        assert main.chat_store.using_memory_fallback is True
 
     _cleanup_session(session_id)
 
 
-def test_memory_survives_app_restart_with_same_redis() -> None:
-    _require_redis()
-    session_id = 'test_memory_survives_app_restart_with_same_redis'
+def test_memory_survives_app_restart_with_same_store_backend() -> None:
+    session_id = 'test_memory_survives_app_restart_with_same_store_backend'
     _cleanup_session(session_id)
     response1 = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
     assert response1.status_code == 200
-    history1 = main.get_memory(session_id)
+    history1 = main.chat_store.get_memory(session_id)
     assert len(history1) == 2
 
     restarted_client = TestClient(main.app)
     response2 = restarted_client.post('/chat', json={'message': 'how are you', 'session_id': session_id})
     assert response2.status_code == 200
-    history2 = main.get_memory(session_id)
+    history2 = main.chat_store.get_memory(session_id)
     assert len(history2) == 4
 
     _cleanup_session(session_id)
 
 
 def test_chat_stream_outputs_token_then_usage_events() -> None:
-    _require_redis()
     session_id = 'test_chat_stream_outputs_token_then_usage_events'
     _cleanup_session(session_id)
 
@@ -200,8 +190,78 @@ def test_chat_stream_outputs_token_then_usage_events() -> None:
     assert usage['prompt_tokens'] > 0
     assert usage['completion_tokens'] > 0
 
-    history = main.get_memory(session_id)
+    history = main.chat_store.get_memory(session_id)
     assert history[-1]['role'] == 'assistant'
     assert history[-1]['content']
 
     _cleanup_session(session_id)
+
+
+def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
+    class _FakeLLMResult:
+        answer = 'RAG final answer'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 1
+        completion_tokens = 1
+        total_tokens = 2
+
+    def _fake_rag_search(query: str, k: int = 5):
+        return {
+            'query': query,
+            'doc_ids': ['doc1.txt', 'doc2.txt'],
+            'docs': [
+                {'doc_id': 'doc1.txt', 'text': 'a'},
+                {'doc_id': 'doc2.txt', 'text': 'b'},
+            ],
+        }
+
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
+
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    response = client.post('/rag', json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['answer'] == 'RAG final answer'
+    assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
+
+
+
+def test_query_rag_returns_retrieval_items_and_answer(monkeypatch) -> None:
+    class _FakeLLMResult:
+        answer = 'query_rag final answer'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 2
+        completion_tokens = 3
+        total_tokens = 5
+
+    def _fake_rag_search(query: str, k: int = 5):
+        return {
+            'query': query,
+            'doc_ids': ['doc11.txt', 'doc5.txt'],
+            'docs': [
+                {'doc_id': 'doc11.txt', 'text': 'faiss text', 'rerank_score': 0.91},
+                {'doc_id': 'doc5.txt', 'text': 'vector db text', 'rerank_score': 0.73},
+            ],
+        }
+
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
+
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    response = client.post('/query_rag', json={'query': 'what is faiss', 'session_id': 'qrag-s1', 'k': 2, 'rewrite_query': False})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body['answer'] == 'query_rag final answer'
+    assert body['doc_ids'] == ['doc11.txt', 'doc5.txt']
+    assert body['retrieval']['doc_ids'] == ['doc11.txt', 'doc5.txt']
+    assert body['retrieval']['rerank_scores'] == [0.91, 0.73]
+    assert len(body['retrieval']['items']) == 2
+
