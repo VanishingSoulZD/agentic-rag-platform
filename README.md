@@ -156,14 +156,14 @@ python -m app.retrieval.evaluate_retrieval
 ## RAG pipeline（检索 + prompt 拼接）
 
 ```bash
-curl -X POST http://127.0.0.1:8000/rag \
+curl -X POST http://127.0.0.1:8000/rag/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
 ```
 
 说明：
 
-- `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
+- `/rag/query` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
 - 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 
 ## 监控埋点（TTFT/P95/usage）
@@ -198,3 +198,21 @@ python -m app.retrieval.evaluate_rag_quality
 - `retrieval_precision`（Hit@k）
 - `answer_accuracy`（token-F1 阈值）
 - `bm25_retrieval_precision`（baseline 对比）
+
+## RAG 服务化（/rag/query）
+
+```bash
+curl -X POST http://127.0.0.1:8000/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+```
+
+返回包含：
+
+- `answer`（LLM 输出）
+- `retrieval.items`（检索结果含 rerank_score）
+- `retrieval.doc_ids` + `retrieval.rerank_scores`
+
+日志：
+
+- 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。

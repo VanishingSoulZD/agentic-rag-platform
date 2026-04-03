@@ -43,7 +43,7 @@ class ChatRequest(BaseModel):
     session_id: str
 
 
-class RagRequest(BaseModel):
+class RagQueryRequest(BaseModel):
     query: str
     session_id: str
     k: int = 5
@@ -280,34 +280,44 @@ def _build_rag_messages(
     ]
 
 
-@app.post('/rag')
-async def rag(req: RagRequest, request: Request) -> dict[str, object]:
-    history = chat_store.get_memory(req.session_id)
-    rewritten_query = req.query
-    if req.rewrite_query:
-        rewritten_query = await _rewrite_query_with_history(req.query, history)
+async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_query: bool) -> dict[str, object]:
+    history = chat_store.get_memory(session_id)
+    rewritten_query = query
+    if rewrite_query:
+        rewritten_query = await _rewrite_query_with_history(query, history)
 
-    retrieval_result = rag_search(rewritten_query, k=req.k)
+    retrieval_result = rag_search(rewritten_query, k=k)
     docs = retrieval_result['docs']
     doc_ids = retrieval_result['doc_ids']
 
-    prompt_messages = _build_rag_messages(req.query, history, docs)
+    prompt_messages = _build_rag_messages(query, history, docs)
     llm_result = await llm_client.chat(prompt_messages)
 
-    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.query})
-    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+    chat_store.append_message(session_id, {'role': 'user', 'content': query})
+    chat_store.append_message(session_id, {'role': 'assistant', 'content': llm_result.answer})
 
+    rerank_scores = [float(doc.get('rerank_score', 0.0)) for doc in docs]
+    logger.info(
+        'query_rag_trace session_id=%s rewritten_query=%s doc_ids=%s rerank_scores=%s',
+        session_id,
+        rewritten_query,
+        doc_ids,
+        rerank_scores,
+    )
     logger.info(f'Retrieved {doc_ids=}')
-    request.state.prompt_tokens = llm_result.prompt_tokens
-    request.state.completion_tokens = llm_result.completion_tokens
 
     return {
-        'session_id': req.session_id,
-        'query': req.query,
+        'session_id': session_id,
+        'query': query,
         'rewritten_query': rewritten_query,
         'answer': llm_result.answer,
         'sources': docs,
         'doc_ids': doc_ids,
+        'retrieval': {
+            'items': docs,
+            'doc_ids': doc_ids,
+            'rerank_scores': rerank_scores,
+        },
         'use': {
             'model': llm_result.model,
             'mock': llm_result.mock,
@@ -316,3 +326,11 @@ async def rag(req: RagRequest, request: Request) -> dict[str, object]:
             'total_tokens': llm_result.total_tokens,
         },
     }
+
+
+@app.post('/rag/query')
+async def rag_query(req: RagQueryRequest, request: Request) -> dict[str, object]:
+    response = await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
+    request.state.prompt_tokens = response['use']['prompt_tokens']
+    request.state.completion_tokens = response['use']['completion_tokens']
+    return response

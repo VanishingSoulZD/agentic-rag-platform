@@ -178,7 +178,6 @@ async def evaluate(k: int = 3) -> dict[str, Any]:
                 "answer_ok": answer_ok,
             }
         )
-        await asyncio.sleep(10)
 
     total = len(gold)
     report = {

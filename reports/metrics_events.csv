@@ -1,0 +1,2 @@
+ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens
+2026-04-03T05:16:28.041906+00:00,POST,/rag/query,200,1,9212.3489,,256,180

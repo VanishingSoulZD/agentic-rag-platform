@@ -229,9 +229,46 @@ def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    response = client.post('/rag',
+    response = client.post('/rag/query',
                            json={'query': 'what is rag?', 'session_id': 'rag-s1', 'k': 3, 'rewrite_query': False})
     assert response.status_code == 200
     body = response.json()
     assert body['answer'] == 'RAG final answer'
     assert body['doc_ids'] == ['doc1.txt', 'doc2.txt']
+
+
+def test_query_rag_returns_retrieval_items_and_answer(monkeypatch) -> None:
+    class _FakeLLMResult:
+        answer = 'query_rag final answer'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 2
+        completion_tokens = 3
+        total_tokens = 5
+
+    def _fake_rag_search(query: str, k: int = 5):
+        return {
+            'query': query,
+            'doc_ids': ['doc11.txt', 'doc5.txt'],
+            'docs': [
+                {'doc_id': 'doc11.txt', 'text': 'faiss text', 'rerank_score': 0.91},
+                {'doc_id': 'doc5.txt', 'text': 'vector db text', 'rerank_score': 0.73},
+            ],
+        }
+
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
+
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    response = client.post('/rag/query',
+                           json={'query': 'what is faiss', 'session_id': 'qrag-s1', 'k': 2, 'rewrite_query': False})
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body['answer'] == 'query_rag final answer'
+    assert body['doc_ids'] == ['doc11.txt', 'doc5.txt']
+    assert body['retrieval']['doc_ids'] == ['doc11.txt', 'doc5.txt']
+    assert body['retrieval']['rerank_scores'] == [0.91, 0.73]
+    assert len(body['retrieval']['items']) == 2
