@@ -2,6 +2,8 @@
 
 __all__ = [
     "calculator",
+    "weather",
+    "db",
     "registry",
     "agent",
 ]
