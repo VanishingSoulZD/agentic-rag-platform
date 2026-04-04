@@ -216,7 +216,8 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 日志：
 
 - 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。
-## Day 15 - LangChain 基础（Chain / Tools）
+
+## LangChain 基础（Chain / Tools）
 
 新增工程化示例模块（LangChain + LangGraph 新生态）：
 
@@ -225,10 +226,11 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 - `app/langchain_tools/agent.py`：Agent 装配（`langgraph.prebuilt.create_react_agent`）。
 - `tests/test_langchain_calculator_tool.py`：验证 Tool 调用与 Agent 调用链路。
 
-## Day 16 - 定义更多工具（HTTP API / SQL / Scraper）
+## 定义更多工具（HTTP API / SQL / Scraper）
 
 新增工具：
 
 - `WeatherAPI`：mock 天气 API wrapper（`app/langchain_tools/weather.py`）。
 - `UserDBQuery`：本地 sqlite 查询工具（`app/langchain_tools/db.py`，仅允许 `SELECT`）。
-- `build_day16_agent`：组合 `Calculator + WeatherAPI + UserDBQuery`，支持对话中多工具调用与结果整合。
+- `build_agent`：组合 `Calculator + WeatherAPI + UserDBQuery`，支持对话中多工具调用与结果整合。
+
