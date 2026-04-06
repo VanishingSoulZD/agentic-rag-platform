@@ -43,9 +43,12 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
             'week_start',
             'request_count',
             'success_rate',
+            'cache_hit_rate',
             'latency_p50_ms',
             'latency_p95_ms',
             'latency_p99_ms',
+            'latency_cache_hit_p95_ms',
+            'latency_cache_miss_p95_ms',
             'avg_ttft_ms',
             'prompt_tokens_total',
             'completion_tokens_total',
@@ -56,6 +59,9 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
             latencies = [float(r.get('response_time_ms') or 0) for r in rows]
             ttfts = [float(r['ttft_ms']) for r in rows if r.get('ttft_ms')]
             success_count = sum(int(r.get('success') or 0) for r in rows)
+            cache_hits = sum(int(r.get('cache_hit') or 0) for r in rows)
+            hit_latencies = [float(r.get('response_time_ms') or 0) for r in rows if int(r.get('cache_hit') or 0) == 1]
+            miss_latencies = [float(r.get('response_time_ms') or 0) for r in rows if int(r.get('cache_hit') or 0) == 0]
             prompt_tokens_total = sum(int(r.get('prompt_tokens') or 0) for r in rows)
             completion_tokens_total = sum(int(r.get('completion_tokens') or 0) for r in rows)
             count = len(rows)
@@ -64,9 +70,12 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
                 week_start,
                 count,
                 f'{(success_count / count) if count else 0:.6f}',
+                f'{(cache_hits / count) if count else 0:.6f}',
                 f'{percentile(latencies, 0.5):.4f}',
                 f'{percentile(latencies, 0.95):.4f}',
                 f'{percentile(latencies, 0.99):.4f}',
+                f'{percentile(hit_latencies, 0.95):.4f}',
+                f'{percentile(miss_latencies, 0.95):.4f}',
                 f'{(sum(ttfts) / len(ttfts)) if ttfts else 0:.4f}',
                 prompt_tokens_total,
                 completion_tokens_total,

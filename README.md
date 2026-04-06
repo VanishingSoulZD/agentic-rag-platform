@@ -180,7 +180,38 @@ python scripts/weekly_metrics_report.py   --input reports/metrics_events.csv   -
 ```
 
 周报字段：
-`week_start, request_count, success_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+`week_start, request_count, success_rate, cache_hit_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, latency_cache_hit_p95_ms, latency_cache_miss_p95_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+
+## 指标可视化（Prometheus + Grafana 基础）
+
+本地启动（包含 API + Redis + Prometheus + Grafana）：
+
+```bash
+docker compose up --build
+```
+
+访问入口：
+
+- Prometheus：`http://127.0.0.1:9090`
+- Grafana：`http://127.0.0.1:3000`（账号/密码：`admin` / `admin`）
+- 预置看板：`Agentic RAG Metrics`
+
+看板面板包含：
+
+- `TTFT P95 (ms)`
+- `Overall P95 Latency (ms)`
+- `Cache Hit Rate`
+- `P95 Latency: Cache Hit vs Miss`（可直接对比命中/未命中）
+
+快速制造 cache hit / miss 对比（同一个 session 连续请求）：
+
+```bash
+# miss（首次）
+curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello","session_id":"viz-s1"}'
+
+# hit（同 session 再发）
+curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello again","session_id":"viz-s1"}'
+```
 
 ## RAG 质量评估（测试集 + baseline）
 
@@ -280,3 +311,4 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 日志 trace 中包含：
 
 - `query_rag_trace ... cache_hit ... doc_ids ... rerank_scores ... hit_rate`
+

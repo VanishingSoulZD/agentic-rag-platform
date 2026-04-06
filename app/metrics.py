@@ -19,6 +19,7 @@ class RequestMetric:
     ttft_ms: float | None
     prompt_tokens: int
     completion_tokens: int
+    cache_hit: int
 
 
 class MetricsStore:
@@ -30,12 +31,16 @@ class MetricsStore:
         self._ttft_times: list[float] = []
         self._prompt_tokens_total = 0
         self._completion_tokens_total = 0
+        self._cache_hits = 0
+        self._cache_misses = 0
+        self._response_times_cache_hit: list[float] = []
+        self._response_times_cache_miss: list[float] = []
 
         self.csv_path = Path(csv_path or os.getenv('METRICS_CSV_PATH', 'reports/metrics_events.csv'))
         self.csv_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.csv_path.exists():
             self.csv_path.write_text(
-                'ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens\n',
+                'ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit\n',
                 encoding='utf-8',
             )
 
@@ -56,24 +61,33 @@ class MetricsStore:
         return float(sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight)
 
     def record_request(
-        self,
-        *,
-        method: str,
-        path: str,
-        status_code: int,
-        response_time_ms: float,
-        success: bool,
-        ttft_ms: float | None = None,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
+            self,
+            *,
+            method: str,
+            path: str,
+            status_code: int,
+            response_time_ms: float,
+            success: bool,
+            ttft_ms: float | None = None,
+            prompt_tokens: int = 0,
+            completion_tokens: int = 0,
+            cache_hit: bool = False,
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         success_as_int = 1 if success else 0
+        cache_hit_as_int = 1 if cache_hit else 0
 
         with self._lock:
             self._request_count += 1
             self._success_count += success_as_int
             self._response_times.append(response_time_ms)
+            if cache_hit:
+                self._cache_hits += 1
+                self._response_times_cache_hit.append(response_time_ms)
+            else:
+                self._cache_misses += 1
+                self._response_times_cache_miss.append(response_time_ms)
+
             if ttft_ms is not None:
                 self._ttft_times.append(ttft_ms)
             self._prompt_tokens_total += max(0, int(prompt_tokens))
@@ -92,6 +106,7 @@ class MetricsStore:
                         '' if ttft_ms is None else f'{ttft_ms:.4f}',
                         int(prompt_tokens),
                         int(completion_tokens),
+                        cache_hit_as_int,
                     ]
                 )
 
@@ -101,8 +116,11 @@ class MetricsStore:
             p50 = self._percentile(self._response_times, 0.5)
             p95 = self._percentile(self._response_times, 0.95)
             p99 = self._percentile(self._response_times, 0.99)
+            p95_cache_hit = self._percentile(self._response_times_cache_hit, 0.95)
+            p95_cache_miss = self._percentile(self._response_times_cache_miss, 0.95)
             ttft_p95 = self._percentile(self._ttft_times, 0.95)
             last_updated = int(time.time())
+            cache_hit_rate = (self._cache_hits / self._request_count) if self._request_count else 0.0
 
             lines = [
                 '# HELP response_time_ms API response latency in milliseconds.',
@@ -122,6 +140,21 @@ class MetricsStore:
                 '# HELP success_rate Successful request ratio.',
                 '# TYPE success_rate gauge',
                 f'success_rate {success_rate:.6f}',
+                '# HELP cache_hits_total Number of cache-hit requests.',
+                '# TYPE cache_hits_total counter',
+                f'cache_hits_total {self._cache_hits}',
+                '# HELP cache_misses_total Number of cache-miss requests.',
+                '# TYPE cache_misses_total counter',
+                f'cache_misses_total {self._cache_misses}',
+                '# HELP cache_hit_rate Cache-hit request ratio.',
+                '# TYPE cache_hit_rate gauge',
+                f'cache_hit_rate {cache_hit_rate:.6f}',
+                '# HELP response_time_ms_cache_hit_p95 P95 latency for cache-hit requests.',
+                '# TYPE response_time_ms_cache_hit_p95 gauge',
+                f'response_time_ms_cache_hit_p95 {p95_cache_hit:.4f}',
+                '# HELP response_time_ms_cache_miss_p95 P95 latency for cache-miss requests.',
+                '# TYPE response_time_ms_cache_miss_p95 gauge',
+                f'response_time_ms_cache_miss_p95 {p95_cache_miss:.4f}',
                 '# HELP requests_total Number of API requests.',
                 '# TYPE requests_total counter',
                 f'requests_total {self._request_count}',

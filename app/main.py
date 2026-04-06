@@ -102,6 +102,7 @@ async def log_request_response(request: Request, call_next):
                 ttft_ms=getattr(request.state, 'ttft_ms', None),
                 prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
                 completion_tokens=getattr(request.state, 'completion_tokens', 0),
+                cache_hit=getattr(request.state, 'cache_hit', False),
             )
         raise
     else:
@@ -124,6 +125,7 @@ async def log_request_response(request: Request, call_next):
                 ttft_ms=getattr(request.state, 'ttft_ms', None),
                 prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
                 completion_tokens=getattr(request.state, 'completion_tokens', 0),
+                cache_hit=getattr(request.state, 'cache_hit', False),
             )
         return response
     finally:
@@ -197,6 +199,9 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
     await asyncio.sleep(1)
 
+    history_before = chat_store.get_memory(req.session_id)
+    request.state.cache_hit = len(history_before) > 0
+
     sanitized_message = sanitize_user_input(req.message)
     chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
 
@@ -224,6 +229,8 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
+    history_before = chat_store.get_memory(req.session_id)
+    cache_hit = len(history_before) > 0
     sanitized_message = sanitize_user_input(req.message)
     chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
     history = chat_store.get_memory(req.session_id)
@@ -277,6 +284,7 @@ async def chat_stream(req: ChatRequest, request: Request):
                 ttft_ms=ttft_ms,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                cache_hit=cache_hit,
             )
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
@@ -413,6 +421,8 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
 
 @app.post('/rag/query')
 async def rag_query(req: RagQueryRequest, request: Request):
+    history = chat_store.get_memory(req.session_id)
+    request.state.cache_hit = len(history) > 0
     sanitized_query = sanitize_user_input(req.query)
     response = await _execute_rag_pipeline(sanitized_query, req.session_id, req.k, req.rewrite_query)
     if isinstance(response, dict) and response.get('code') == 429:
