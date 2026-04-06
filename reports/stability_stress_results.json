@@ -11,12 +11,12 @@
       "success": 24,
       "errors": 1976,
       "error_rate": 0.988,
-      "p50_ms": 80.43,
-      "p95_ms": 102.95,
-      "qps": 17627.98,
-      "success_qps": 211.54,
-      "wall_time_s": 0.113,
-      "cpu_usage_pct_est": 18.73,
+      "p50_ms": 80.0,
+      "p95_ms": 102.39,
+      "qps": 17985.35,
+      "success_qps": 215.82,
+      "wall_time_s": 0.111,
+      "cpu_usage_pct_est": 5.28,
       "gpu_usage_note": "N/A (CPU-only simulation)"
     },
     {
@@ -26,12 +26,12 @@
       "success": 2000,
       "errors": 0,
       "error_rate": 0.0,
-      "p50_ms": 403.45,
-      "p95_ms": 435.45,
-      "qps": 245.39,
-      "success_qps": 245.39,
-      "wall_time_s": 8.15,
-      "cpu_usage_pct_est": 8.23,
+      "p50_ms": 403.23,
+      "p95_ms": 436.63,
+      "qps": 245.59,
+      "success_qps": 245.59,
+      "wall_time_s": 8.144,
+      "cpu_usage_pct_est": 6.98,
       "gpu_usage_note": "N/A (CPU-only simulation)"
     }
   ],
@@ -41,7 +41,7 @@
   },
   "delta": {
     "error_rate_drop": 0.988,
-    "p95_ms_drop": -332.5,
-    "success_qps_change": 33.85
+    "p95_ms_drop": -334.24,
+    "success_qps_change": 29.77
   }
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Day 21 - 并发稳定性与压力测试（100 并发）
+"""并发稳定性与压力测试（100 并发）
 
 This script simulates two versions of an inference service:
 1) baseline (no backpressure) -> overload prone
@@ -14,7 +14,6 @@ import argparse
 import asyncio
 import json
 import random
-import statistics
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -209,9 +208,9 @@ async def main_async(args) -> None:
         "runs": [asdict(baseline), asdict(improved)],
         "verdict": {
             "baseline_pass": baseline.error_rate < threshold["target_error_rate_max"]
-            and baseline.p95_ms <= threshold["target_p95_ms_max"],
+                             and baseline.p95_ms <= threshold["target_p95_ms_max"],
             "improved_pass": improved.error_rate < threshold["target_error_rate_max"]
-            and improved.p95_ms <= threshold["target_p95_ms_max"],
+                             and improved.p95_ms <= threshold["target_p95_ms_max"],
         },
         "delta": {
             "error_rate_drop": round(baseline.error_rate - improved.error_rate, 4),
@@ -238,7 +237,7 @@ def main() -> None:
     parser.add_argument("--baseline-soft-limit", type=int, default=24)
     parser.add_argument("--p95-threshold-ms", type=float, default=1500.0)
     parser.add_argument("--seed", type=int, default=21)
-    parser.add_argument("--out", default="reports/day21_stability_stress_results.json")
+    parser.add_argument("--out", default="reports/stability_stress_results.json")
     args = parser.parse_args()
     asyncio.run(main_async(args))
 
