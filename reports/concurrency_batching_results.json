@@ -12,30 +12,30 @@
   "metrics": [
     {
       "name": "cloud_api",
-      "p50_ms": 1413.75,
-      "p95_ms": 1652.3,
-      "qps": 26.98,
-      "wall_time_s": 1.854,
+      "p50_ms": 1395.51,
+      "p95_ms": 1665.02,
+      "qps": 26.77,
+      "wall_time_s": 1.868,
       "cost_usd_total": 0.0136,
       "cost_usd_per_1k_req": 0.2727
     },
     {
       "name": "hf_single_process",
-      "p50_ms": 37727.99,
-      "p95_ms": 71066.93,
+      "p50_ms": 37708.42,
+      "p95_ms": 71016.74,
       "qps": 0.68,
-      "wall_time_s": 73.698,
-      "cost_usd_total": 0.0246,
-      "cost_usd_per_1k_req": 0.4913
+      "wall_time_s": 73.648,
+      "cost_usd_total": 0.0245,
+      "cost_usd_per_1k_req": 0.491
     },
     {
       "name": "vllm_batching",
-      "p50_ms": 6256.11,
-      "p95_ms": 9386.36,
+      "p50_ms": 6251.18,
+      "p95_ms": 9379.69,
       "qps": 4.93,
-      "wall_time_s": 10.141,
+      "wall_time_s": 10.135,
       "cost_usd_total": 0.0038,
-      "cost_usd_per_1k_req": 0.0761
+      "cost_usd_per_1k_req": 0.076
     }
   ]
 }

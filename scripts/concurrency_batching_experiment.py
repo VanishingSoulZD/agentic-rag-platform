@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Day 19 - 并发 & vLLM batching 实验（吞吐 / cost）
+"""并发 & vLLM batching 实验（吞吐 / cost）
 
 Use asyncio to simulate 50 concurrent users and compare three backends:
 1) cloud API
@@ -236,7 +236,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--users", type=int, default=50)
     parser.add_argument("--seed", type=int, default=19)
-    parser.add_argument("--out", default="reports/day19_concurrency_batching_results.json")
+    parser.add_argument("--out", default="reports/concurrency_batching_results.json")
     args = parser.parse_args()
     asyncio.run(main_async(args))
 
