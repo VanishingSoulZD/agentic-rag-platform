@@ -1,0 +1,16 @@
+{
+  "provider": "openai_compatible_cloud_api",
+  "status": "not_run_in_repo_env",
+  "reason": "missing .env / OPENAI_API_KEY in current execution environment",
+  "how_to_run": "python scripts/day8_ttft_benchmark.py --runs 3",
+  "expected_summary_fields": {
+    "short": {
+      "avg_ttft_ms": "number",
+      "avg_token_per_sec": "number"
+    },
+    "long": {
+      "avg_ttft_ms": "number",
+      "avg_token_per_sec": "number"
+    }
+  }
+}
