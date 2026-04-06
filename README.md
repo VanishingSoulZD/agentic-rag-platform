@@ -234,3 +234,15 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 - `UserDBQuery`：本地 sqlite 查询工具（`app/langchain_tools/db.py`，仅允许 `SELECT`）。
 - `build_agent`：组合 `Calculator + WeatherAPI + UserDBQuery`，支持对话中多工具调用与结果整合。
 
+## Planner / Executor 架构实现
+
+新增模块：`app/langchain_tools/planner_executor.py`
+
+流程：
+
+1. Planner：把复杂问题切分为可执行 steps（查资料 / 天气 / 计算 / 总结）。
+2. Executor：按 step 调用工具（`UserDBQuery` / `WeatherAPI` / `Calculator`）。
+3. Collect：收集 observations。
+4. Summary Step（LLM）：把计划与工具结果整合成最终回答。
+
+对应测试：`tests/test_planner_executor.py`，覆盖 3 个复合问题场景。

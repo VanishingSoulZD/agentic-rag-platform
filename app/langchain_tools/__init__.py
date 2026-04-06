@@ -4,6 +4,7 @@ __all__ = [
     "calculator",
     "weather",
     "db",
+    "planner_executor.py",
     "registry",
     "agent",
 ]
