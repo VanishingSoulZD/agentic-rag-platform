@@ -1,4 +1,4 @@
-"""Day 17 Planner / Executor architecture for multi-step answers."""
+"""Planner / Executor architecture for multi-step answers."""
 
 from __future__ import annotations
 
@@ -163,7 +163,8 @@ class PlannerExecutorAgent:
         import re
 
         explicit = re.findall(r"[0-9\s\+\-\*\/\(\)\.]+", question)
-        candidates = [item.strip() for item in explicit if any(ch.isdigit() for ch in item) and any(op in item for op in "+-*/")]
+        candidates = [item.strip() for item in explicit if
+                      any(ch.isdigit() for ch in item) and any(op in item for op in "+-*/")]
         if candidates:
             return candidates[0]
 

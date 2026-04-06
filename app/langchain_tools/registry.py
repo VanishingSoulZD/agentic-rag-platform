@@ -13,6 +13,7 @@ from app.langchain_tools.weather import get_weather
 
 def build_calculator_tool() -> StructuredTool:
     """Create the Calculator tool for arithmetic requests."""
+
     return StructuredTool.from_function(
         func=calculate_expression,
         name="Calculator",
@@ -25,6 +26,7 @@ def build_calculator_tool() -> StructuredTool:
 
 def build_weather_tool() -> StructuredTool:
     """Create mock weather API tool."""
+
     return StructuredTool.from_function(
         func=get_weather,
         name="WeatherAPI",
