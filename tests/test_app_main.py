@@ -30,6 +30,16 @@ def test_ping_response_contains_request_id_header() -> None:
     assert response.headers.get('X-Request-ID')
 
 
+
+
+def test_metrics_endpoint_returns_prometheus_text() -> None:
+    response = client.get('/metrics')
+
+    assert response.status_code == 200
+    assert 'response_time_ms' in response.text
+    assert 'success_rate' in response.text
+    assert 'cache_hit_rate' in response.text
+
 def test_chat_returns_200_and_answer_with_session_id() -> None:
     session_id = 'test_chat_returns_200_and_answer_with_session_id'
     _cleanup_session(session_id)

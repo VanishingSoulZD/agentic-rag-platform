@@ -166,3 +166,50 @@ curl -X POST http://127.0.0.1:8000/rag \
 - `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
 - 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 
+
+
+## Day 12 监控埋点（TTFT/P95/usage）
+
+新增能力：
+
+- API 内置埋点：`response_time_ms`、`ttft_ms`、`prompt_tokens`、`completion_tokens`、`success_rate`。
+- 暴露 `GET /metrics`（Prometheus 文本格式）。
+- 同步写入请求级 CSV：`reports/metrics_events.csv`。
+- 每周报告脚本（含 P50/P95/P99）：
+
+```bash
+python scripts/weekly_metrics_report.py   --input reports/metrics_events.csv   --output reports/weekly_metrics_report.csv
+```
+
+周报字段：`week_start, request_count, success_rate, cache_hit_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, latency_cache_hit_p95_ms, latency_cache_miss_p95_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+
+## Day 23 指标可视化（Prometheus + Grafana 基础）
+
+本地启动（包含 API + Redis + Prometheus + Grafana）：
+
+```bash
+docker compose up --build
+```
+
+访问入口：
+
+- Prometheus：`http://127.0.0.1:9090`
+- Grafana：`http://127.0.0.1:3000`（账号/密码：`admin` / `admin`）
+- 预置看板：`Agentic RAG Metrics`
+
+看板面板包含：
+
+- `TTFT P95 (ms)`
+- `Overall P95 Latency (ms)`
+- `Cache Hit Rate`
+- `P95 Latency: Cache Hit vs Miss`（可直接对比命中/未命中）
+
+快速制造 cache hit / miss 对比（同一个 session 连续请求）：
+
+```bash
+# miss（首次）
+curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello","session_id":"viz-s1"}'
+
+# hit（同 session 再发）
+curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello again","session_id":"viz-s1"}'
+```

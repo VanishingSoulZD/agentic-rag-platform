@@ -7,12 +7,13 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
 from app.memory import ChatStoreConfig, HybridChatStore
+from app.metrics import metrics_store
 from app.retrieval.retriever import rag_search
 
 configure_logging()
@@ -72,6 +73,18 @@ async def log_request_response(request: Request, call_next):
             request.url.path,
             elapsed_ms,
         )
+        if request.url.path != '/chat/stream':
+            metrics_store.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                response_time_ms=elapsed_ms,
+                success=False,
+                ttft_ms=getattr(request.state, 'ttft_ms', None),
+                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
+                completion_tokens=getattr(request.state, 'completion_tokens', 0),
+                cache_hit=getattr(request.state, 'cache_hit', False),
+            )
         raise
     else:
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -83,6 +96,18 @@ async def log_request_response(request: Request, call_next):
             response.status_code,
             elapsed_ms,
         )
+        if request.url.path != '/chat/stream':
+            metrics_store.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                response_time_ms=elapsed_ms,
+                success=response.status_code < 500,
+                ttft_ms=getattr(request.state, 'ttft_ms', None),
+                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
+                completion_tokens=getattr(request.state, 'completion_tokens', 0),
+                cache_hit=getattr(request.state, 'cache_hit', False),
+            )
         return response
     finally:
         reset_request_id(token)
@@ -117,20 +142,30 @@ def ping() -> dict[str, str]:
     return {'status': 'ok'}
 
 
+@app.get('/metrics')
+def metrics() -> PlainTextResponse:
+    return PlainTextResponse(metrics_store.render_prometheus(), media_type='text/plain; version=0.0.4')
+
+
 @app.post('/chat')
-async def chat(req: ChatRequest) -> dict[str, object]:
+async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     if req.message == 'raise_error':
         raise RuntimeError('mocked error for testing')
 
     # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
     await asyncio.sleep(1)
 
+    history_before = chat_store.get_memory(req.session_id)
+    request.state.cache_hit = len(history_before) > 0
     chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
 
     history = chat_store.get_memory(req.session_id)
     llm_result = await llm_client.chat(history)
 
     chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+
+    request.state.prompt_tokens = llm_result.prompt_tokens
+    request.state.completion_tokens = llm_result.completion_tokens
 
     return {
         'answer': llm_result.answer,
@@ -147,38 +182,63 @@ async def chat(req: ChatRequest) -> dict[str, object]:
 
 
 @app.post('/chat/stream')
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, request: Request):
+    history_before = chat_store.get_memory(req.session_id)
+    cache_hit = len(history_before) > 0
     chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
     history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
         full_answer = ''
+        request_start = time.perf_counter()
+        first_token_at = None
+        prompt_tokens = 0
+        completion_tokens = 0
 
-        async for event in llm_client.stream_chat(history):
-            if event['type'] == 'token':
-                token = str(event['content'])
-                full_answer += token
-                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
-            elif event['type'] == 'usage':
-                usage_payload = {
-                    'type': 'usage',
-                    'prompt_tokens': event['prompt_tokens'],
-                    'completion_tokens': event['completion_tokens'],
-                    'total_tokens': event['total_tokens'],
-                    'model': event['model'],
-                    'mock': event['mock'],
-                }
-                logger.info(
-                    'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
-                    req.session_id,
-                    event['prompt_tokens'],
-                    event['completion_tokens'],
-                    event['total_tokens'],
-                )
-                yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
+        try:
+            async for event in llm_client.stream_chat(history):
+                if event['type'] == 'token':
+                    token = str(event['content'])
+                    full_answer += token
+                    if first_token_at is None:
+                        first_token_at = time.perf_counter()
+                    yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+                elif event['type'] == 'usage':
+                    prompt_tokens = event['prompt_tokens']
+                    completion_tokens = event['completion_tokens']
+                    usage_payload = {
+                        'type': 'usage',
+                        'prompt_tokens': event['prompt_tokens'],
+                        'completion_tokens': event['completion_tokens'],
+                        'total_tokens': event['total_tokens'],
+                        'model': event['model'],
+                        'mock': event['mock'],
+                    }
+                    logger.info(
+                        'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                        req.session_id,
+                        event['prompt_tokens'],
+                        event['completion_tokens'],
+                        event['total_tokens'],
+                    )
+                    yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
 
-        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
-        yield 'data: [DONE]\n\n'
+            chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+            yield 'data: [DONE]\n\n'
+        finally:
+            elapsed_ms = (time.perf_counter() - request_start) * 1000
+            ttft_ms = (first_token_at - request_start) * 1000 if first_token_at is not None else None
+            metrics_store.record_request(
+                method='POST',
+                path='/chat/stream',
+                status_code=200,
+                response_time_ms=elapsed_ms,
+                success=True,
+                ttft_ms=ttft_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cache_hit=cache_hit,
+            )
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
 
@@ -228,8 +288,9 @@ def _build_rag_messages(
 
 
 @app.post('/rag')
-async def rag(req: RagRequest) -> dict[str, object]:
+async def rag(req: RagRequest, request: Request) -> dict[str, object]:
     history = chat_store.get_memory(req.session_id)
+    request.state.cache_hit = len(history) > 0
     rewritten_query = req.query
     if req.rewrite_query:
         rewritten_query = await _rewrite_query_with_history(req.query, history)
@@ -245,6 +306,8 @@ async def rag(req: RagRequest) -> dict[str, object]:
     chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
 
     logger.info(f'Retrieved {doc_ids=}')
+    request.state.prompt_tokens = llm_result.prompt_tokens
+    request.state.completion_tokens = llm_result.completion_tokens
 
     return {
         'session_id': req.session_id,
