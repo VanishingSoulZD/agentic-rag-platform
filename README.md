@@ -136,3 +136,78 @@ pytest tests/test_app_main.py
 ```
 
 > 开发约定：后续新增接口/函数/方法时，必须同步补充对应单元测试。
+
+## Day 10：Embeddings + FAISS 入门
+
+```bash
+# 1) 构建索引（50 篇文档 -> token chunk -> embedding -> FAISS）
+python -m app.retrieval.build_index
+
+# 2) 运行检索验收（10 条 query，检查 top-3 是否命中）
+python -m app.retrieval.evaluate_retrieval
+```
+
+实现说明：
+- Embedding 模型：`SentenceTransformer("all-MiniLM-L6-v2")`
+- 分块方式：`tiktoken.get_encoding("cl100k_base")` + `chunk_by_token`
+- 检索流程：`FAISS top-k` + `cosine rerank` + 文档级 top-3 聚合
+
+## Day 11：RAG pipeline（检索 + prompt 拼接）
+
+```bash
+curl -X POST http://127.0.0.1:8000/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+```
+
+说明：
+- `/rag/query` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
+- 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
+
+## Day 13：RAG 质量评估（测试集 + baseline）
+
+```bash
+python -m app.retrieval.evaluate_rag_quality
+```
+
+输出：
+- `reports/day13_rag_eval_report.json`
+- `reports/day13_rag_eval_report.md`
+
+指标：
+- `retrieval_precision`（Hit@k）
+- `answer_accuracy`（token-F1 阈值）
+- `bm25_retrieval_precision`（baseline 对比）
+
+## Day 14：RAG 服务化（/rag/query）
+
+```bash
+curl -X POST http://127.0.0.1:8000/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+```
+
+返回包含：
+- `answer`（LLM 输出）
+- `retrieval.items`（检索结果含 rerank_score）
+- `retrieval.doc_ids` + `retrieval.rerank_scores`
+
+日志：
+- 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。
+
+## Day 20：成本优化（semantic cache + rate limit）
+
+`/rag/query` 新增：
+- Semantic cache：`query -> embedding` 相似度命中（默认阈值 `0.85`）直接返回缓存结果，减少 LLM 调用。
+- Per-session rate limiter：默认每会话每分钟最多 20 次。
+
+可调环境变量：
+- `SEMANTIC_CACHE_THRESHOLD`（默认 `0.85`）
+- `RAG_RATE_LIMIT_PER_MINUTE`（默认 `20`）
+- `RAG_RATE_LIMIT_WINDOW_SECONDS`（默认 `60`）
+
+响应中包含：
+- `cache.hit`、`cache.similarity`、`cache.hit_rate`
+
+日志 trace 中包含：
+- `query_rag_trace ... cache_hit ... doc_ids ... rerank_scores ... hit_rate`
