@@ -23,6 +23,7 @@ from app.memory import ChatStoreConfig, HybridChatStore
 from app.metrics import metrics_store
 from app.optimization import SemanticCache, SessionRateLimiter
 from app.retrieval.retriever import rag_search
+from app.security import sanitize_user_input
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -165,7 +166,7 @@ def metrics() -> PlainTextResponse:
 
 @app.post('/agent/trace')
 async def agent_trace(req: AgentTraceRequest) -> dict[str, object]:
-    execution_result = await planner_executor_agent.execute(req.question)
+    execution_result = await planner_executor_agent.execute(sanitize_user_input(req.question))
     graph = build_execution_graph(execution_result)
     trace_id, output_path = save_execution_graph(graph)
 
@@ -196,7 +197,8 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     # 模拟 I/O 等待，验证接口在并发请求下不会阻塞整个服务线程。
     await asyncio.sleep(1)
 
-    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
+    sanitized_message = sanitize_user_input(req.message)
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
 
     history = chat_store.get_memory(req.session_id)
     llm_result = await llm_client.chat(history)
@@ -222,7 +224,8 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
-    chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
+    sanitized_message = sanitize_user_input(req.message)
+    chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
     history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
@@ -410,7 +413,8 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
 
 @app.post('/rag/query')
 async def rag_query(req: RagQueryRequest, request: Request):
-    response = await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
+    sanitized_query = sanitize_user_input(req.query)
+    response = await _execute_rag_pipeline(sanitized_query, req.session_id, req.k, req.rewrite_query)
     if isinstance(response, dict) and response.get('code') == 429:
         return JSONResponse(status_code=429, content=response)
     request.state.prompt_tokens = response['use']['prompt_tokens']

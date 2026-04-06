@@ -11,6 +11,7 @@ from app.langchain_tools.calculator import calculate_expression
 from app.langchain_tools.db import DEFAULT_DB_PATH, query_local_user_db
 from app.langchain_tools.weather import get_weather
 from app.llm_client import AsyncLLMClient
+from app.security import ToolUsePolicy, sanitize_user_input
 
 
 @dataclass
@@ -25,9 +26,15 @@ class PlanStep:
 class PlannerExecutorAgent:
     """Planner -> Executor -> Summary (LLM) workflow."""
 
-    def __init__(self, db_path: Path = DEFAULT_DB_PATH, llm_client: AsyncLLMClient | None = None):
+    def __init__(
+        self,
+        db_path: Path = DEFAULT_DB_PATH,
+        llm_client: AsyncLLMClient | None = None,
+        tool_policy: ToolUsePolicy | None = None,
+    ):
         self.db_path = db_path
         self.llm_client = llm_client or AsyncLLMClient()
+        self.tool_policy = tool_policy or ToolUsePolicy(denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"})
 
     def planner(self, question: str) -> list[PlanStep]:
         """Split a complex question into executable steps."""
@@ -83,7 +90,8 @@ class PlannerExecutorAgent:
         return steps
 
     async def execute(self, question: str) -> dict[str, Any]:
-        steps = self.planner(question)
+        sanitized_question = sanitize_user_input(question)
+        steps = self.planner(sanitized_question)
         observations: list[dict[str, Any]] = []
 
         for step in steps:
@@ -100,15 +108,17 @@ class PlannerExecutorAgent:
                 }
             )
 
-        summary = await self._summary_step(question=question, steps=steps, observations=observations)
+        summary = await self._summary_step(question=sanitized_question, steps=steps, observations=observations)
         return {
-            "question": question,
+            "question": sanitized_question,
             "plan": [step.__dict__ for step in steps],
             "observations": observations,
             "answer": summary,
         }
 
     def _call_tool(self, tool_name: str, tool_input: str) -> str:
+        self.tool_policy.enforce(tool_name)
+
         if tool_name == "Calculator":
             return calculate_expression(tool_input)
         if tool_name == "WeatherAPI":
