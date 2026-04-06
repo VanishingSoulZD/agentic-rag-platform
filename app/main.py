@@ -21,6 +21,7 @@ from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
 from app.memory import ChatStoreConfig, HybridChatStore
 from app.metrics import metrics_store
+from app.optimization import SemanticCache, SessionRateLimiter
 from app.retrieval.retriever import rag_search
 
 configure_logging()
@@ -42,6 +43,11 @@ chat_store = HybridChatStore(
 llm_client = AsyncLLMClient(
     timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
+)
+semantic_cache = SemanticCache(sim_threshold=float(os.getenv('SEMANTIC_CACHE_THRESHOLD', '0.85')))
+rag_rate_limiter = SessionRateLimiter(
+    limit=int(os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20')),
+    window_seconds=int(os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60')),
 )
 planner_executor_agent = PlannerExecutorAgent()
 
@@ -318,6 +324,35 @@ def _build_rag_messages(
 
 
 async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_query: bool) -> dict[str, object]:
+    allowed, retry_after = rag_rate_limiter.allow(session_id)
+    if not allowed:
+        return {
+            'error': 'rate_limited',
+            'code': 429,
+            'retry_after_seconds': retry_after,
+            'session_id': session_id,
+        }
+
+    cached_payload, sim = semantic_cache.lookup(query)
+    if cached_payload is not None:
+        cached_resp = {
+            **cached_payload,
+            'cache': {
+                'hit': True,
+                'similarity': sim,
+                'hit_rate': semantic_cache.hit_rate(),
+            },
+        }
+        logger.info(
+            'query_rag_trace session_id=%s cache_hit=%s similarity=%.4f doc_ids=%s hit_rate=%.4f',
+            session_id,
+            True,
+            sim,
+            cached_resp.get('doc_ids', []),
+            semantic_cache.hit_rate(),
+        )
+        return cached_resp
+
     history = chat_store.get_memory(session_id)
     rewritten_query = query
     if rewrite_query:
@@ -334,16 +369,7 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     chat_store.append_message(session_id, {'role': 'assistant', 'content': llm_result.answer})
 
     rerank_scores = [float(doc.get('rerank_score', 0.0)) for doc in docs]
-    logger.info(
-        'query_rag_trace session_id=%s rewritten_query=%s doc_ids=%s rerank_scores=%s',
-        session_id,
-        rewritten_query,
-        doc_ids,
-        rerank_scores,
-    )
-    logger.info(f'Retrieved {doc_ids=}')
-
-    return {
+    response = {
         'session_id': session_id,
         'query': query,
         'rewritten_query': rewritten_query,
@@ -362,12 +388,31 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
             'completion_tokens': llm_result.completion_tokens,
             'total_tokens': llm_result.total_tokens,
         },
+        'cache': {
+            'hit': False,
+            'similarity': sim,
+            'hit_rate': semantic_cache.hit_rate(),
+        },
     }
+    semantic_cache.store(query, response)
+
+    logger.info(
+        'query_rag_trace session_id=%s rewritten_query=%s cache_hit=%s doc_ids=%s rerank_scores=%s hit_rate=%.4f',
+        session_id,
+        rewritten_query,
+        False,
+        doc_ids,
+        rerank_scores,
+        semantic_cache.hit_rate(),
+    )
+    return response
 
 
 @app.post('/rag/query')
-async def rag_query(req: RagQueryRequest, request: Request) -> dict[str, object]:
+async def rag_query(req: RagQueryRequest, request: Request):
     response = await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
+    if isinstance(response, dict) and response.get('code') == 429:
+        return JSONResponse(status_code=429, content=response)
     request.state.prompt_tokens = response['use']['prompt_tokens']
     request.state.completion_tokens = response['use']['completion_tokens']
     return response

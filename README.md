@@ -259,3 +259,24 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 - `POST /agent/trace`：执行 planner/executor agent，并保存 trace JSON。
 - `GET /agent/trace/{trace_id}`：读取 trace JSON。
 - `GET /agent/trace/{trace_id}/view`：浏览器可视化执行流图（Mermaid）。
+
+## 成本优化（semantic cache + rate limit）
+
+`/rag/query` 新增：
+
+- Semantic cache：`query -> embedding` 相似度命中（默认阈值 `0.85`）直接返回缓存结果，减少 LLM 调用。
+- Per-session rate limiter：默认每会话每分钟最多 20 次。
+
+可调环境变量：
+
+- `SEMANTIC_CACHE_THRESHOLD`（默认 `0.85`）
+- `RAG_RATE_LIMIT_PER_MINUTE`（默认 `20`）
+- `RAG_RATE_LIMIT_WINDOW_SECONDS`（默认 `60`）
+
+响应中包含：
+
+- `cache.hit`、`cache.similarity`、`cache.hit_rate`
+
+日志 trace 中包含：
+
+- `query_rag_trace ... cache_hit ... doc_ids ... rerank_scores ... hit_rate`
