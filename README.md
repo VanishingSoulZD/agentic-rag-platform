@@ -246,3 +246,16 @@ curl -X POST http://127.0.0.1:8000/rag/query \
 4. Summary Step（LLM）：把计划与工具结果整合成最终回答。
 
 对应测试：`tests/test_planner_executor.py`，覆盖 3 个复合问题场景。
+
+## LangGraph 可视化与流转跟踪
+
+新增能力：
+
+- `app/langchain_tools/graph_trace.py`：
+    - execution result → graph JSON
+    - graph JSON → Mermaid 文本
+    - 保存/加载 trace 文件
+    - 生成可直接浏览器打开的 Mermaid HTML
+- `POST /agent/trace`：执行 planner/executor agent，并保存 trace JSON。
+- `GET /agent/trace/{trace_id}`：读取 trace JSON。
+- `GET /agent/trace/{trace_id}/view`：浏览器可视化执行流图（Mermaid）。

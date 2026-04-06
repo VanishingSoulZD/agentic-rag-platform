@@ -5,6 +5,7 @@ __all__ = [
     "weather",
     "db",
     "planner_executor.py",
+    "graph_trace.py",
     "registry",
     "agent",
 ]
