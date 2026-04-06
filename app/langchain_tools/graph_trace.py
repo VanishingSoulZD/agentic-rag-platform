@@ -1,4 +1,4 @@
-"""Day 18 execution graph trace (JSON + Mermaid rendering)."""
+"""Execution graph trace (JSON + Mermaid rendering)."""
 
 from __future__ import annotations
 
@@ -54,7 +54,8 @@ def to_mermaid(graph: dict) -> str:
     return "\n".join(lines)
 
 
-def save_execution_graph(graph: dict, output_dir: Path = TRACE_OUTPUT_DIR, trace_id: str | None = None) -> tuple[str, Path]:
+def save_execution_graph(graph: dict, output_dir: Path = TRACE_OUTPUT_DIR, trace_id: str | None = None) -> tuple[
+    str, Path]:
     """Persist graph JSON file and return (trace_id, path)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     resolved_trace_id = trace_id or uuid4().hex[:12]

@@ -4,8 +4,8 @@ __all__ = [
     "calculator",
     "weather",
     "db",
-    "day17_planner_executor",
-    "day18_graph_trace",
+    "planner_executor.py",
+    "graph_trace.py",
     "registry",
     "agent",
 ]

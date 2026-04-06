@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.langchain_tools.day18_graph_trace import build_execution_graph, build_mermaid_html, save_execution_graph
+from app.langchain_tools.graph_trace import build_execution_graph, build_mermaid_html, save_execution_graph
 from app.main import app
 
 
@@ -82,7 +82,8 @@ def test_agent_trace_endpoints(monkeypatch, tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(main_module, "load_execution_graph", lambda trace_id: json.loads((tmp_path / "trace999.json").read_text(encoding="utf-8")))
+    monkeypatch.setattr(main_module, "load_execution_graph",
+                        lambda trace_id: json.loads((tmp_path / "trace999.json").read_text(encoding="utf-8")))
 
     client = TestClient(app)
     create_resp = client.post("/agent/trace", json={"question": "test question"})

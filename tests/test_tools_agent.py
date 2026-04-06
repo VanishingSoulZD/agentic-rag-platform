@@ -29,18 +29,14 @@ def test_db_query_rejects_non_select(tmp_path: Path) -> None:
         query_local_user_db("DELETE FROM users", db_path=db_path)
 
 
-def test_day16_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
-    langchain_core = pytest.importorskip("langchain_core")
+def test_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
+    pytest.importorskip("langchain_core")
     pytest.importorskip("langgraph")
 
-    BaseChatModel = langchain_core.language_models.chat_models.BaseChatModel
-    AIMessage = langchain_core.messages.AIMessage
-    HumanMessage = langchain_core.messages.HumanMessage
-    ToolMessage = langchain_core.messages.ToolMessage
-    ChatGeneration = langchain_core.outputs.ChatGeneration
-    ChatResult = langchain_core.outputs.ChatResult
-
-    from app.langchain_tools.agent import build_day16_agent, run_agent
+    from langchain_core.language_models import BaseChatModel
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
+    from app.langchain_tools.agent import build_agent, run_agent
 
     class RuleBasedToolModel(BaseChatModel):
         def __init__(self):
@@ -59,7 +55,8 @@ def test_day16_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
             if any(isinstance(msg, ToolMessage) for msg in messages):
                 tool_outputs = [msg.content for msg in messages if isinstance(msg, ToolMessage)]
                 final = " | ".join(tool_outputs)
-                return ChatResult(generations=[ChatGeneration(message=AIMessage(content=f"Integrated result: {final}"))])
+                return ChatResult(
+                    generations=[ChatGeneration(message=AIMessage(content=f"Integrated result: {final}"))])
 
             user_text = ""
             for msg in reversed(messages):
@@ -74,7 +71,8 @@ def test_day16_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
                             message=AIMessage(
                                 content="",
                                 tool_calls=[
-                                    {"name": "UserDBQuery", "args": {"query": "SELECT city FROM users WHERE name='Alice'"}, "id": "db_1"},
+                                    {"name": "UserDBQuery",
+                                     "args": {"query": "SELECT city FROM users WHERE name='Alice'"}, "id": "db_1"},
                                     {"name": "WeatherAPI", "args": {"city": "Taipei"}, "id": "w_1"},
                                 ],
                             )
@@ -87,7 +85,7 @@ def test_day16_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
     db_path = tmp_path / "users.db"
     initialize_local_user_db(db_path)
 
-    agent = build_day16_agent(RuleBasedToolModel(), db_path=db_path)
+    agent = build_agent(RuleBasedToolModel(), db_path=db_path)
     answer = run_agent(agent, "Please tell me Alice city from DB and weather of that city")
 
     assert "Taipei" in answer
