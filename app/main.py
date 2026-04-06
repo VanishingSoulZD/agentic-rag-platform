@@ -7,11 +7,18 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
+from app.langchain_tools.day17_planner_executor import PlannerExecutorAgent
+from app.langchain_tools.day18_graph_trace import (
+    build_execution_graph,
+    build_mermaid_html,
+    load_execution_graph,
+    save_execution_graph,
+)
 from app.memory import ChatStoreConfig, HybridChatStore
 from app.metrics import metrics_store
 from app.retrieval.retriever import rag_search
@@ -36,6 +43,7 @@ llm_client = AsyncLLMClient(
     timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
 )
+planner_executor_agent = PlannerExecutorAgent()
 
 
 class ChatRequest(BaseModel):
@@ -48,6 +56,10 @@ class RagQueryRequest(BaseModel):
     session_id: str
     k: int = 5
     rewrite_query: bool = True
+
+
+class AgentTraceRequest(BaseModel):
+    question: str
 
 
 @app.middleware('http')
@@ -143,6 +155,31 @@ def ping() -> dict[str, str]:
 @app.get('/metrics')
 def metrics() -> PlainTextResponse:
     return PlainTextResponse(metrics_store.render_prometheus(), media_type='text/plain; version=0.0.4')
+
+
+@app.post('/agent/trace')
+async def agent_trace(req: AgentTraceRequest) -> dict[str, object]:
+    execution_result = await planner_executor_agent.execute(req.question)
+    graph = build_execution_graph(execution_result)
+    trace_id, output_path = save_execution_graph(graph)
+
+    return {
+        'trace_id': trace_id,
+        'graph_file': str(output_path),
+        'graph': graph,
+        'answer': execution_result['answer'],
+    }
+
+
+@app.get('/agent/trace/{trace_id}')
+def get_agent_trace(trace_id: str) -> dict:
+    return load_execution_graph(trace_id)
+
+
+@app.get('/agent/trace/{trace_id}/view')
+def view_agent_trace(trace_id: str) -> HTMLResponse:
+    graph = load_execution_graph(trace_id)
+    return HTMLResponse(build_mermaid_html(graph))
 
 
 @app.post('/chat')
