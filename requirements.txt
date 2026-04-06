@@ -27,6 +27,7 @@ hf-xet==1.4.2
 httpcore==1.0.9
 httptools==0.7.1
 httpx==0.28.1
+httpx-sse==0.4.3
 huggingface_hub==1.7.1
 idna==3.11
 iniconfig==2.3.0
@@ -35,6 +36,10 @@ jiter==0.13.0
 joblib==1.5.3
 jsonpatch==1.33
 jsonpointer==3.1.0
+langchain==1.2.14
+langchain-community==0.4.1
+langchain-openai==1.1.12
+langgraph==1.1.4
 markdown-it-py==4.0.0
 MarkupSafe==3.0.3
 marshmallow==3.26.2

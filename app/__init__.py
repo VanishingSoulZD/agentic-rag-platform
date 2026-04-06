@@ -1,1 +1,1 @@
-"""FastAPI application package for Day 1 demo endpoints."""
+"""FastAPI application package for endpoints."""

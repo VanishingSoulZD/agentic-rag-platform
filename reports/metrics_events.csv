@@ -1,0 +1,5 @@
+ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens
+2026-04-03T05:16:28.041906+00:00,POST,/rag/query,200,1,9212.3489,,256,180
+2026-04-06T07:30:26.180377+00:00,POST,/agent/trace,200,1,1.4112,,0,0
+2026-04-06T07:30:26.182748+00:00,GET,/agent/trace/trace999,200,1,0.7814,,0,0
+2026-04-06T07:30:26.184394+00:00,GET,/agent/trace/trace999/view,200,1,0.5859,,0,0
