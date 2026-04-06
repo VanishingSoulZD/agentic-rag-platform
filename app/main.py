@@ -7,14 +7,22 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel
 
+from app.langchain_tools.graph_trace import (
+    build_execution_graph,
+    build_mermaid_html,
+    load_execution_graph,
+    save_execution_graph,
+)
+from app.langchain_tools.planner_executor import PlannerExecutorAgent
 from app.llm_client import AsyncLLMClient
 from app.logging_setup import configure_logging, reset_request_id, set_request_id
 from app.memory import ChatStoreConfig, HybridChatStore
-from app.retrieval.retriever import rag_search
+from app.metrics import metrics_store
 from app.optimization import SemanticCache, SessionRateLimiter
+from app.retrieval.retriever import rag_search
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -41,6 +49,7 @@ rag_rate_limiter = SessionRateLimiter(
     limit=int(os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20')),
     window_seconds=int(os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60')),
 )
+planner_executor_agent = PlannerExecutorAgent()
 
 
 class ChatRequest(BaseModel):
@@ -53,6 +62,10 @@ class RagQueryRequest(BaseModel):
     session_id: str
     k: int = 5
     rewrite_query: bool = True
+
+
+class AgentTraceRequest(BaseModel):
+    question: str
 
 
 @app.middleware('http')
@@ -78,6 +91,17 @@ async def log_request_response(request: Request, call_next):
             request.url.path,
             elapsed_ms,
         )
+        if request.url.path != '/chat/stream':
+            metrics_store.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                response_time_ms=elapsed_ms,
+                success=False,
+                ttft_ms=getattr(request.state, 'ttft_ms', None),
+                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
+                completion_tokens=getattr(request.state, 'completion_tokens', 0),
+            )
         raise
     else:
         elapsed_ms = (time.perf_counter() - start) * 1000
@@ -89,6 +113,17 @@ async def log_request_response(request: Request, call_next):
             response.status_code,
             elapsed_ms,
         )
+        if request.url.path != '/chat/stream':
+            metrics_store.record_request(
+                method=request.method,
+                path=request.url.path,
+                status_code=response.status_code,
+                response_time_ms=elapsed_ms,
+                success=response.status_code < 500,
+                ttft_ms=getattr(request.state, 'ttft_ms', None),
+                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
+                completion_tokens=getattr(request.state, 'completion_tokens', 0),
+            )
         return response
     finally:
         reset_request_id(token)
@@ -123,8 +158,38 @@ def ping() -> dict[str, str]:
     return {'status': 'ok'}
 
 
+@app.get('/metrics')
+def metrics() -> PlainTextResponse:
+    return PlainTextResponse(metrics_store.render_prometheus(), media_type='text/plain; version=0.0.4')
+
+
+@app.post('/agent/trace')
+async def agent_trace(req: AgentTraceRequest) -> dict[str, object]:
+    execution_result = await planner_executor_agent.execute(req.question)
+    graph = build_execution_graph(execution_result)
+    trace_id, output_path = save_execution_graph(graph)
+
+    return {
+        'trace_id': trace_id,
+        'graph_file': str(output_path),
+        'graph': graph,
+        'answer': execution_result['answer'],
+    }
+
+
+@app.get('/agent/trace/{trace_id}')
+def get_agent_trace(trace_id: str) -> dict:
+    return load_execution_graph(trace_id)
+
+
+@app.get('/agent/trace/{trace_id}/view')
+def view_agent_trace(trace_id: str) -> HTMLResponse:
+    graph = load_execution_graph(trace_id)
+    return HTMLResponse(build_mermaid_html(graph))
+
+
 @app.post('/chat')
-async def chat(req: ChatRequest) -> dict[str, object]:
+async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     if req.message == 'raise_error':
         raise RuntimeError('mocked error for testing')
 
@@ -137,6 +202,9 @@ async def chat(req: ChatRequest) -> dict[str, object]:
     llm_result = await llm_client.chat(history)
 
     chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+
+    request.state.prompt_tokens = llm_result.prompt_tokens
+    request.state.completion_tokens = llm_result.completion_tokens
 
     return {
         'answer': llm_result.answer,
@@ -153,38 +221,60 @@ async def chat(req: ChatRequest) -> dict[str, object]:
 
 
 @app.post('/chat/stream')
-async def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, request: Request):
     chat_store.append_message(req.session_id, {'role': 'user', 'content': req.message})
     history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
         full_answer = ''
+        request_start = time.perf_counter()
+        first_token_at = None
+        prompt_tokens = 0
+        completion_tokens = 0
 
-        async for event in llm_client.stream_chat(history):
-            if event['type'] == 'token':
-                token = str(event['content'])
-                full_answer += token
-                yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
-            elif event['type'] == 'usage':
-                usage_payload = {
-                    'type': 'usage',
-                    'prompt_tokens': event['prompt_tokens'],
-                    'completion_tokens': event['completion_tokens'],
-                    'total_tokens': event['total_tokens'],
-                    'model': event['model'],
-                    'mock': event['mock'],
-                }
-                logger.info(
-                    'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
-                    req.session_id,
-                    event['prompt_tokens'],
-                    event['completion_tokens'],
-                    event['total_tokens'],
-                )
-                yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
+        try:
+            async for event in llm_client.stream_chat(history):
+                if event['type'] == 'token':
+                    token = str(event['content'])
+                    full_answer += token
+                    if first_token_at is None:
+                        first_token_at = time.perf_counter()
+                    yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
+                elif event['type'] == 'usage':
+                    prompt_tokens = event['prompt_tokens']
+                    completion_tokens = event['completion_tokens']
+                    usage_payload = {
+                        'type': 'usage',
+                        'prompt_tokens': event['prompt_tokens'],
+                        'completion_tokens': event['completion_tokens'],
+                        'total_tokens': event['total_tokens'],
+                        'model': event['model'],
+                        'mock': event['mock'],
+                    }
+                    logger.info(
+                        'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                        req.session_id,
+                        event['prompt_tokens'],
+                        event['completion_tokens'],
+                        event['total_tokens'],
+                    )
+                    yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
 
-        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
-        yield 'data: [DONE]\n\n'
+            chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
+            yield 'data: [DONE]\n\n'
+        finally:
+            elapsed_ms = (time.perf_counter() - request_start) * 1000
+            ttft_ms = (first_token_at - request_start) * 1000 if first_token_at is not None else None
+            metrics_store.record_request(
+                method='POST',
+                path='/chat/stream',
+                status_code=200,
+                response_time_ms=elapsed_ms,
+                success=True,
+                ttft_ms=ttft_ms,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
 
@@ -211,9 +301,9 @@ async def _rewrite_query_with_history(query: str, history: list[dict[str, str]])
 
 
 def _build_rag_messages(
-    query: str,
-    history: list[dict[str, str]],
-    docs: list[dict[str, object]],
+        query: str,
+        history: list[dict[str, str]],
+        docs: list[dict[str, object]],
 ) -> list[dict[str, str]]:
     context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
     recent_history = history[-8:]
@@ -261,7 +351,6 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
             cached_resp.get('doc_ids', []),
             semantic_cache.hit_rate(),
         )
-        print('Retrieved doc_ids:', cached_resp.get('doc_ids', []))
         return cached_resp
 
     history = chat_store.get_memory(session_id)
@@ -316,13 +405,14 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
         rerank_scores,
         semantic_cache.hit_rate(),
     )
-    print('Retrieved doc_ids:', doc_ids)
     return response
 
 
 @app.post('/rag/query')
-async def rag_query(req: RagQueryRequest):
-    result = await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
-    if isinstance(result, dict) and result.get('code') == 429:
-        return JSONResponse(status_code=429, content=result)
-    return result
+async def rag_query(req: RagQueryRequest, request: Request):
+    response = await _execute_rag_pipeline(req.query, req.session_id, req.k, req.rewrite_query)
+    if isinstance(response, dict) and response.get('code') == 429:
+        return JSONResponse(status_code=429, content=response)
+    request.state.prompt_tokens = response['use']['prompt_tokens']
+    request.state.completion_tokens = response['use']['completion_tokens']
+    return response

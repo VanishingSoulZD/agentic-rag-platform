@@ -1,9 +1,9 @@
 {
   "k": 3,
   "total": 30,
-  "embedding_pipeline_available": false,
+  "embedding_pipeline_available": true,
   "retrieval_precision": 1.0,
-  "answer_accuracy": 0.2,
+  "answer_accuracy": 0.3333333333333333,
   "bm25_retrieval_precision": 1.0,
   "notes": [
     "Retrieval precision is Hit@k using expected_doc in top-k.",
@@ -17,8 +17,8 @@
       "expected_doc": "doc1.txt",
       "embedding_topk": [
         "doc1.txt",
-        "doc12.txt",
-        "doc32.txt"
+        "doc40.txt",
+        "doc2.txt"
       ],
       "bm25_topk": [
         "doc1.txt",
@@ -34,8 +34,8 @@
       "expected_doc": "doc2.txt",
       "embedding_topk": [
         "doc2.txt",
-        "doc36.txt",
-        "doc5.txt"
+        "doc41.txt",
+        "doc36.txt"
       ],
       "bm25_topk": [
         "doc2.txt",
@@ -50,9 +50,9 @@
       "question": "What problem does Docker solve?",
       "expected_doc": "doc3.txt",
       "embedding_topk": [
-        "doc17.txt",
         "doc3.txt",
-        "doc15.txt"
+        "doc4.txt",
+        "doc35.txt"
       ],
       "bm25_topk": [
         "doc17.txt",
@@ -68,8 +68,8 @@
       "expected_doc": "doc4.txt",
       "embedding_topk": [
         "doc4.txt",
-        "doc26.txt",
-        "doc13.txt"
+        "doc37.txt",
+        "doc3.txt"
       ],
       "bm25_topk": [
         "doc4.txt",
@@ -86,7 +86,7 @@
       "embedding_topk": [
         "doc5.txt",
         "doc23.txt",
-        "doc36.txt"
+        "doc11.txt"
       ],
       "bm25_topk": [
         "doc5.txt",
@@ -95,15 +95,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "What are embeddings in ML?",
       "expected_doc": "doc6.txt",
       "embedding_topk": [
-        "doc5.txt",
+        "doc6.txt",
         "doc21.txt",
-        "doc6.txt"
+        "doc5.txt"
       ],
       "bm25_topk": [
         "doc5.txt",
@@ -119,8 +119,8 @@
       "expected_doc": "doc7.txt",
       "embedding_topk": [
         "doc7.txt",
-        "doc5.txt",
-        "doc13.txt"
+        "doc22.txt",
+        "doc43.txt"
       ],
       "bm25_topk": [
         "doc7.txt",
@@ -135,9 +135,9 @@
       "question": "What can large language models do?",
       "expected_doc": "doc8.txt",
       "embedding_topk": [
-        "doc20.txt",
         "doc8.txt",
-        "doc50.txt"
+        "doc20.txt",
+        "doc13.txt"
       ],
       "bm25_topk": [
         "doc20.txt",
@@ -146,15 +146,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "What did transformers introduce?",
       "expected_doc": "doc9.txt",
       "embedding_topk": [
-        "doc21.txt",
         "doc9.txt",
-        "doc1.txt"
+        "doc21.txt",
+        "doc50.txt"
       ],
       "bm25_topk": [
         "doc21.txt",
@@ -163,7 +163,7 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "How does attention help sequence models?",
@@ -171,7 +171,7 @@
       "embedding_topk": [
         "doc10.txt",
         "doc9.txt",
-        "doc50.txt"
+        "doc8.txt"
       ],
       "bm25_topk": [
         "doc10.txt",
@@ -187,8 +187,8 @@
       "expected_doc": "doc11.txt",
       "embedding_topk": [
         "doc11.txt",
-        "doc5.txt",
-        "doc21.txt"
+        "doc42.txt",
+        "doc35.txt"
       ],
       "bm25_topk": [
         "doc11.txt",
@@ -205,7 +205,7 @@
       "embedding_topk": [
         "doc12.txt",
         "doc6.txt",
-        "doc31.txt"
+        "doc23.txt"
       ],
       "bm25_topk": [
         "doc12.txt",
@@ -222,7 +222,7 @@
       "embedding_topk": [
         "doc13.txt",
         "doc14.txt",
-        "doc32.txt"
+        "doc7.txt"
       ],
       "bm25_topk": [
         "doc13.txt",
@@ -238,8 +238,8 @@
       "expected_doc": "doc14.txt",
       "embedding_topk": [
         "doc14.txt",
-        "doc4.txt",
-        "doc18.txt"
+        "doc13.txt",
+        "doc8.txt"
       ],
       "bm25_topk": [
         "doc14.txt",
@@ -248,7 +248,7 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": true
+      "answer_ok": false
     },
     {
       "question": "Define an AI agent.",
@@ -256,7 +256,7 @@
       "embedding_topk": [
         "doc15.txt",
         "doc17.txt",
-        "doc14.txt"
+        "doc50.txt"
       ],
       "bm25_topk": [
         "doc15.txt",
@@ -265,7 +265,7 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "What is ReAct?",
@@ -273,7 +273,7 @@
       "embedding_topk": [
         "doc16.txt",
         "doc15.txt",
-        "doc32.txt"
+        "doc14.txt"
       ],
       "bm25_topk": [
         "doc16.txt",
@@ -290,7 +290,7 @@
       "embedding_topk": [
         "doc17.txt",
         "doc15.txt",
-        "doc37.txt"
+        "doc14.txt"
       ],
       "bm25_topk": [
         "doc17.txt",
@@ -306,7 +306,7 @@
       "expected_doc": "doc18.txt",
       "embedding_topk": [
         "doc18.txt",
-        "doc13.txt",
+        "doc38.txt",
         "doc34.txt"
       ],
       "bm25_topk": [
@@ -324,7 +324,7 @@
       "embedding_topk": [
         "doc19.txt",
         "doc18.txt",
-        "doc33.txt"
+        "doc24.txt"
       ],
       "bm25_topk": [
         "doc19.txt",
@@ -340,8 +340,8 @@
       "expected_doc": "doc20.txt",
       "embedding_topk": [
         "doc20.txt",
-        "doc18.txt",
-        "doc1.txt"
+        "doc1.txt",
+        "doc40.txt"
       ],
       "bm25_topk": [
         "doc20.txt",
@@ -357,8 +357,8 @@
       "expected_doc": "doc21.txt",
       "embedding_topk": [
         "doc21.txt",
-        "doc49.txt",
-        "doc5.txt"
+        "doc9.txt",
+        "doc8.txt"
       ],
       "bm25_topk": [
         "doc21.txt",
@@ -367,15 +367,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": true
+      "answer_ok": false
     },
     {
       "question": "How is semantic search different from keyword search?",
       "expected_doc": "doc22.txt",
       "embedding_topk": [
-        "doc5.txt",
         "doc22.txt",
-        "doc21.txt"
+        "doc43.txt",
+        "doc23.txt"
       ],
       "bm25_topk": [
         "doc5.txt",
@@ -390,9 +390,9 @@
       "question": "What is vector similarity search?",
       "expected_doc": "doc23.txt",
       "embedding_topk": [
-        "doc43.txt",
         "doc23.txt",
-        "doc5.txt"
+        "doc5.txt",
+        "doc11.txt"
       ],
       "bm25_topk": [
         "doc43.txt",
@@ -401,15 +401,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "Why use transfer learning?",
       "expected_doc": "doc24.txt",
       "embedding_topk": [
         "doc24.txt",
-        "doc26.txt",
-        "doc8.txt"
+        "doc19.txt",
+        "doc32.txt"
       ],
       "bm25_topk": [
         "doc24.txt",
@@ -418,15 +418,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "Why is Python popular in ML?",
       "expected_doc": "doc25.txt",
       "embedding_topk": [
         "doc25.txt",
-        "doc5.txt",
-        "doc36.txt"
+        "doc27.txt",
+        "doc1.txt"
       ],
       "bm25_topk": [
         "doc25.txt",
@@ -435,7 +435,7 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": false
+      "answer_ok": true
     },
     {
       "question": "What is PyTorch known for?",
@@ -443,7 +443,7 @@
       "embedding_topk": [
         "doc26.txt",
         "doc25.txt",
-        "doc13.txt"
+        "doc27.txt"
       ],
       "bm25_topk": [
         "doc26.txt",
@@ -459,8 +459,8 @@
       "expected_doc": "doc27.txt",
       "embedding_topk": [
         "doc27.txt",
-        "doc25.txt",
-        "doc32.txt"
+        "doc26.txt",
+        "doc25.txt"
       ],
       "bm25_topk": [
         "doc27.txt",
@@ -469,15 +469,15 @@
       ],
       "retrieval_ok": true,
       "bm25_retrieval_ok": true,
-      "answer_ok": true
+      "answer_ok": false
     },
     {
       "question": "Why are GPUs useful in deep learning?",
       "expected_doc": "doc28.txt",
       "embedding_topk": [
         "doc28.txt",
-        "doc8.txt",
-        "doc46.txt"
+        "doc27.txt",
+        "doc26.txt"
       ],
       "bm25_topk": [
         "doc28.txt",
@@ -509,9 +509,9 @@
       "question": "How can overfitting be reduced?",
       "expected_doc": "doc30.txt",
       "embedding_topk": [
-        "doc37.txt",
         "doc30.txt",
-        "doc43.txt"
+        "doc33.txt",
+        "doc24.txt"
       ],
       "bm25_topk": [
         "doc37.txt",
