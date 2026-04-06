@@ -156,19 +156,17 @@ python -m app.retrieval.evaluate_retrieval
 ## RAG pipeline（检索 + prompt 拼接）
 
 ```bash
-curl -X POST http://127.0.0.1:8000/rag \
+curl -X POST http://127.0.0.1:8000/rag/query \
   -H 'Content-Type: application/json' \
   -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
 ```
 
 说明：
 
-- `/rag` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
+- `/rag/query` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
 - 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
 
-
-
-## Day 12 监控埋点（TTFT/P95/usage）
+## 监控埋点（TTFT/P95/usage）
 
 新增能力：
 
@@ -181,9 +179,10 @@ curl -X POST http://127.0.0.1:8000/rag \
 python scripts/weekly_metrics_report.py   --input reports/metrics_events.csv   --output reports/weekly_metrics_report.csv
 ```
 
-周报字段：`week_start, request_count, success_rate, cache_hit_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, latency_cache_hit_p95_ms, latency_cache_miss_p95_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+周报字段：
+`week_start, request_count, success_rate, cache_hit_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, latency_cache_hit_p95_ms, latency_cache_miss_p95_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
 
-## Day 23 指标可视化（Prometheus + Grafana 基础）
+## 指标可视化（Prometheus + Grafana 基础）
 
 本地启动（包含 API + Redis + Prometheus + Grafana）：
 
@@ -213,3 +212,103 @@ curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '
 # hit（同 session 再发）
 curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello again","session_id":"viz-s1"}'
 ```
+
+## RAG 质量评估（测试集 + baseline）
+
+```bash
+python -m app.retrieval.evaluate_rag_quality
+```
+
+输出：
+
+- `reports/rag_eval_report.json`
+- `reports/rag_eval_report.md`
+
+指标：
+
+- `retrieval_precision`（Hit@k）
+- `answer_accuracy`（token-F1 阈值）
+- `bm25_retrieval_precision`（baseline 对比）
+
+## RAG 服务化（/rag/query）
+
+```bash
+curl -X POST http://127.0.0.1:8000/rag/query \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+```
+
+返回包含：
+
+- `answer`（LLM 输出）
+- `retrieval.items`（检索结果含 rerank_score）
+- `retrieval.doc_ids` + `retrieval.rerank_scores`
+
+日志：
+
+- 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。
+
+## LangChain 基础（Chain / Tools）
+
+新增工程化示例模块（LangChain + LangGraph 新生态）：
+
+- `app/langchain_tools/calculator.py`：安全算术计算器（基于 AST，禁用 `eval`）。
+- `app/langchain_tools/registry.py`：Calculator Tool 注册（`langchain-core` / `StructuredTool`）。
+- `app/langchain_tools/agent.py`：Agent 装配（`langgraph.prebuilt.create_react_agent`）。
+- `tests/test_langchain_calculator_tool.py`：验证 Tool 调用与 Agent 调用链路。
+
+## 定义更多工具（HTTP API / SQL / Scraper）
+
+新增工具：
+
+- `WeatherAPI`：mock 天气 API wrapper（`app/langchain_tools/weather.py`）。
+- `UserDBQuery`：本地 sqlite 查询工具（`app/langchain_tools/db.py`，仅允许 `SELECT`）。
+- `build_agent`：组合 `Calculator + WeatherAPI + UserDBQuery`，支持对话中多工具调用与结果整合。
+
+## Planner / Executor 架构实现
+
+新增模块：`app/langchain_tools/planner_executor.py`
+
+流程：
+
+1. Planner：把复杂问题切分为可执行 steps（查资料 / 天气 / 计算 / 总结）。
+2. Executor：按 step 调用工具（`UserDBQuery` / `WeatherAPI` / `Calculator`）。
+3. Collect：收集 observations。
+4. Summary Step（LLM）：把计划与工具结果整合成最终回答。
+
+对应测试：`tests/test_planner_executor.py`，覆盖 3 个复合问题场景。
+
+## LangGraph 可视化与流转跟踪
+
+新增能力：
+
+- `app/langchain_tools/graph_trace.py`：
+    - execution result → graph JSON
+    - graph JSON → Mermaid 文本
+    - 保存/加载 trace 文件
+    - 生成可直接浏览器打开的 Mermaid HTML
+- `POST /agent/trace`：执行 planner/executor agent，并保存 trace JSON。
+- `GET /agent/trace/{trace_id}`：读取 trace JSON。
+- `GET /agent/trace/{trace_id}/view`：浏览器可视化执行流图（Mermaid）。
+
+## 成本优化（semantic cache + rate limit）
+
+`/rag/query` 新增：
+
+- Semantic cache：`query -> embedding` 相似度命中（默认阈值 `0.85`）直接返回缓存结果，减少 LLM 调用。
+- Per-session rate limiter：默认每会话每分钟最多 20 次。
+
+可调环境变量：
+
+- `SEMANTIC_CACHE_THRESHOLD`（默认 `0.85`）
+- `RAG_RATE_LIMIT_PER_MINUTE`（默认 `20`）
+- `RAG_RATE_LIMIT_WINDOW_SECONDS`（默认 `60`）
+
+响应中包含：
+
+- `cache.hit`、`cache.similarity`、`cache.hit_rate`
+
+日志 trace 中包含：
+
+- `query_rag_trace ... cache_hit ... doc_ids ... rerank_scores ... hit_rate`
+

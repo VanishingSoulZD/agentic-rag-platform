@@ -61,17 +61,17 @@ class MetricsStore:
         return float(sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight)
 
     def record_request(
-        self,
-        *,
-        method: str,
-        path: str,
-        status_code: int,
-        response_time_ms: float,
-        success: bool,
-        ttft_ms: float | None = None,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
-        cache_hit: bool = False,
+            self,
+            *,
+            method: str,
+            path: str,
+            status_code: int,
+            response_time_ms: float,
+            success: bool,
+            ttft_ms: float | None = None,
+            prompt_tokens: int = 0,
+            completion_tokens: int = 0,
+            cache_hit: bool = False,
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         success_as_int = 1 if success else 0
@@ -87,6 +87,7 @@ class MetricsStore:
             else:
                 self._cache_misses += 1
                 self._response_times_cache_miss.append(response_time_ms)
+
             if ttft_ms is not None:
                 self._ttft_times.append(ttft_ms)
             self._prompt_tokens_total += max(0, int(prompt_tokens))
