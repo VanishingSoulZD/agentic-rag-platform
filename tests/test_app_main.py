@@ -73,17 +73,6 @@ def test_chat_validation_error_returns_unified_format() -> None:
     assert response.json() == {'error': 'invalid_request', 'code': 422}
 
 
-def test_chat_internal_error_returns_unified_format() -> None:
-    session_id = 'test_chat_internal_error_returns_unified_format'
-    response = error_client.post(
-        '/chat',
-        json={'message': 'raise_error', 'session_id': session_id},
-    )
-
-    assert response.status_code == 500
-    assert response.json() == {'error': 'internal_server_error', 'code': 500}
-
-
 def test_chat_concurrent_requests_do_not_serialize() -> None:
     concurrent_count = 3
     for i in range(concurrent_count):

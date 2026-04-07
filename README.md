@@ -68,11 +68,6 @@ curl -i -X POST http://127.0.0.1:8000/chat \
 curl -i -X POST http://127.0.0.1:8000/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"only-message"}'
-
-# 触发服务端错误（统一错误格式）
-curl -i -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"raise_error","session_id":"s-1"}'
 ```
 
 期望结果：
