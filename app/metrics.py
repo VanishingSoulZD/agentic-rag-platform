@@ -164,12 +164,14 @@ class MetricsStore:
                 '# TYPE requests_total counter',
                 f'requests_total {self._request_count}',
             ])
+            lines.extend([
+                '# HELP cache_layer_hits_total Cache hits by layer and strategy.',
+                '# TYPE cache_layer_hits_total counter',
+            ])
             for (layer, strategy), value in sorted(self._layer_hits.items()):
-                lines.extend([
-                    '# HELP cache_layer_hits_total Cache hits by layer and strategy.',
-                    '# TYPE cache_layer_hits_total counter',
-                    f'cache_layer_hits_total{{layer="{layer}",strategy="{strategy}"}} {value}',
-                ])
+                lines.append(
+                    f'cache_layer_hits_total{{layer="{layer}",strategy="{strategy}"}} {value}'
+                )
 
             lines.extend([
                 '# HELP metrics_last_updated_unix Last updated unix timestamp.',
