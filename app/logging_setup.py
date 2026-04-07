@@ -43,7 +43,7 @@ class TextLogFormatter(logging.Formatter):
     def __init__(self):
         super().__init__(
             fmt='%(asctime)s | %(levelname)s | %(service)s | %(request_id)s | '
-            '%(name)s | %(filename)s:%(lineno)d %(funcName)s | %(message)s',
+                '%(name)s | %(filename)s:%(lineno)d %(funcName)s | %(message)s',
             datefmt='%Y-%m-%d %H:%M:%S',
         )
 
@@ -83,7 +83,7 @@ def configure_logging() -> None:
     error_file_handler = _build_rotating_file_handler(error_log, logging.ERROR, formatter)
 
     root_logger.handlers.clear()
-    root_logger.addHandler(console_handler)
+    # root_logger.addHandler(console_handler)
     root_logger.addHandler(app_file_handler)
     root_logger.addHandler(error_file_handler)
     root_logger.setLevel(level)

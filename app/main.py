@@ -194,6 +194,7 @@ def view_agent_trace(trace_id: str) -> HTMLResponse:
 
 @app.post('/chat')
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
+    # todo 正确使用cache？
     history_before = chat_store.get_memory(req.session_id)
     request.state.cache_hit = len(history_before) > 0
 
