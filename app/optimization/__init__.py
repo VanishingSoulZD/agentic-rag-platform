@@ -1,4 +1,4 @@
+from app.optimization.cache_layers import CacheManager
 from app.optimization.rate_limiter import SessionRateLimiter
-from app.optimization.semantic_cache import SemanticCache
 
-__all__ = ["SessionRateLimiter", "SemanticCache"]
+__all__ = ["SessionRateLimiter", "CacheManager"]
