@@ -52,6 +52,10 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
             'avg_ttft_ms',
             'prompt_tokens_total',
             'completion_tokens_total',
+            'response_cache_hit_rate',
+            'retrieval_cache_hit_rate',
+            'embedding_cache_hit_rate',
+            'tool_cache_hit_rate',
         ])
 
         for week_start in sorted(buckets):
@@ -64,6 +68,10 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
             miss_latencies = [float(r.get('response_time_ms') or 0) for r in rows if int(r.get('cache_hit') or 0) == 0]
             prompt_tokens_total = sum(int(r.get('prompt_tokens') or 0) for r in rows)
             completion_tokens_total = sum(int(r.get('completion_tokens') or 0) for r in rows)
+            response_hits = sum(int(r.get('response_cache_hit') or 0) for r in rows)
+            retrieval_hits = sum(int(r.get('retrieval_cache_hit') or 0) for r in rows)
+            embedding_hits = sum(int(r.get('embedding_cache_hit') or 0) for r in rows)
+            tool_hits = sum(int(r.get('tool_cache_hit') or 0) for r in rows)
             count = len(rows)
 
             writer.writerow([
@@ -79,6 +87,10 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
                 f'{(sum(ttfts) / len(ttfts)) if ttfts else 0:.4f}',
                 prompt_tokens_total,
                 completion_tokens_total,
+                f'{(response_hits / count) if count else 0:.6f}',
+                f'{(retrieval_hits / count) if count else 0:.6f}',
+                f'{(embedding_hits / count) if count else 0:.6f}',
+                f'{(tool_hits / count) if count else 0:.6f}',
             ])
 
 

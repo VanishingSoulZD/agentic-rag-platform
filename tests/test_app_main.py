@@ -291,11 +291,11 @@ def test_query_rag_semantic_cache_hit_reduces_llm_calls(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    # reset cache state + avoid external model loading
-    main.semantic_cache.entries = []
-    main.semantic_cache.hits = 0
-    main.semantic_cache.lookups = 0
-    main.semantic_cache._model_failed = True
+    # reset layered caches + avoid external model loading
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.retrieval_cache.entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
 
     payload = {'query': 'what is faiss', 'session_id': 'cache-s1', 'k': 2, 'rewrite_query': False}
     r1 = client.post('/rag/query', json=payload)
@@ -331,8 +331,10 @@ def test_query_rag_rate_limiter_per_session(monkeypatch) -> None:
     main.rag_rate_limiter.limit = 1
     main.rag_rate_limiter.window_seconds = 60
     main.rag_rate_limiter._events.clear()
-    main.semantic_cache.entries = []
-    main.semantic_cache._model_failed = True
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.retrieval_cache.entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
 
     payload = {'query': 'what is faiss', 'session_id': 'limit-s1', 'k': 1, 'rewrite_query': False}
     first = client.post('/rag/query', json=payload)

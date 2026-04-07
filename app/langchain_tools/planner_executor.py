@@ -11,6 +11,7 @@ from app.langchain_tools.calculator import calculate_expression
 from app.langchain_tools.db import DEFAULT_DB_PATH, query_local_user_db
 from app.langchain_tools.weather import get_weather
 from app.llm_client import AsyncLLMClient
+from app.optimization.cache_layers import ToolCache
 from app.security import ToolUsePolicy, sanitize_user_input
 
 
@@ -31,10 +32,12 @@ class PlannerExecutorAgent:
         db_path: Path = DEFAULT_DB_PATH,
         llm_client: AsyncLLMClient | None = None,
         tool_policy: ToolUsePolicy | None = None,
+        tool_cache: ToolCache | None = None,
     ):
         self.db_path = db_path
         self.llm_client = llm_client or AsyncLLMClient()
         self.tool_policy = tool_policy or ToolUsePolicy(denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"})
+        self.tool_cache = tool_cache
 
     def planner(self, question: str) -> list[PlanStep]:
         """Split a complex question into executable steps."""
@@ -119,13 +122,23 @@ class PlannerExecutorAgent:
     def _call_tool(self, tool_name: str, tool_input: str) -> str:
         self.tool_policy.enforce(tool_name)
 
+        if self.tool_cache is not None:
+            cached, _, strategy = self.tool_cache.lookup(tool_name, tool_input)
+            if strategy in {"exact", "semantic"} and cached is not None:
+                return cached
+
         if tool_name == "Calculator":
-            return calculate_expression(tool_input)
-        if tool_name == "WeatherAPI":
-            return get_weather(tool_input)
-        if tool_name == "UserDBQuery":
-            return query_local_user_db(tool_input, db_path=self.db_path)
-        raise ValueError(f"Unknown tool: {tool_name}")
+            result = calculate_expression(tool_input)
+        elif tool_name == "WeatherAPI":
+            result = get_weather(tool_input)
+        elif tool_name == "UserDBQuery":
+            result = query_local_user_db(tool_input, db_path=self.db_path)
+        else:
+            raise ValueError(f"Unknown tool: {tool_name}")
+
+        if self.tool_cache is not None:
+            self.tool_cache.store(tool_name, tool_input, result)
+        return result
 
     async def _summary_step(self, question: str, steps: list[PlanStep], observations: list[dict[str, Any]]) -> str:
         summary_payload = {
