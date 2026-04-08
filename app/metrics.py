@@ -80,18 +80,18 @@ class MetricsStore:
         return float(sorted_values[lower] * (1 - weight) + sorted_values[upper] * weight)
 
     def record_request(
-        self,
-        *,
-        method: str,
-        path: str,
-        status_code: int,
-        response_time_ms: float,
-        success: bool,
-        ttft_ms: float | None = None,
-        prompt_tokens: int = 0,
-        completion_tokens: int = 0,
-        cache_hit: bool = False,
-        cache_layers: dict[str, str] | None = None,
+            self,
+            *,
+            method: str,
+            path: str,
+            status_code: int,
+            response_time_ms: float,
+            success: bool,
+            ttft_ms: float | None = None,
+            prompt_tokens: int = 0,
+            completion_tokens: int = 0,
+            cache_hit: bool = False,
+            cache_layers: dict[str, str] | None = None,
     ) -> None:
         ts = datetime.now(timezone.utc).isoformat()
         success_as_int = 1 if success else 0
@@ -198,12 +198,14 @@ class MetricsStore:
                 '# TYPE requests_total counter',
                 f'requests_total {self._request_count}',
             ])
+            lines.extend([
+                '# HELP cache_layer_hits_total Cache hits by layer and strategy.',
+                '# TYPE cache_layer_hits_total counter',
+            ])
             for (layer, strategy), value in sorted(self._layer_hits.items()):
-                lines.extend([
-                    '# HELP cache_layer_hits_total Cache hits by layer and strategy.',
-                    '# TYPE cache_layer_hits_total counter',
-                    f'cache_layer_hits_total{{layer="{layer}",strategy="{strategy}"}} {value}',
-                ])
+                lines.append(
+                    f'cache_layer_hits_total{{layer="{layer}",strategy="{strategy}"}} {value}'
+                )
 
             lines.extend([
                 '# HELP metrics_last_updated_unix Last updated unix timestamp.',

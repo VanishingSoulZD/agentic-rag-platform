@@ -28,11 +28,11 @@ class PlannerExecutorAgent:
     """Planner -> Executor -> Summary (LLM) workflow."""
 
     def __init__(
-        self,
-        db_path: Path = DEFAULT_DB_PATH,
-        llm_client: AsyncLLMClient | None = None,
-        tool_policy: ToolUsePolicy | None = None,
-        tool_cache: ToolCache | None = None,
+            self,
+            db_path: Path = DEFAULT_DB_PATH,
+            llm_client: AsyncLLMClient | None = None,
+            tool_policy: ToolUsePolicy | None = None,
+            tool_cache: ToolCache | None = None,
     ):
         self.db_path = db_path
         self.llm_client = llm_client or AsyncLLMClient()

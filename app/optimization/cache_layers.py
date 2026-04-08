@@ -113,8 +113,10 @@ class ResponseCache:
         self.exact[exact_key] = payload
         vec, _ = self.embedding_cache.get(query)
         self.semantic_entries.append(SemanticEntry(key=exact_key, vector=vec, payload=payload))
-        if len(self.semantic_entries) > self.max_entries:
-            self.semantic_entries = self.semantic_entries[-self.max_entries :]
+        while len(self.semantic_entries) > self.max_entries:
+            evicted = self.semantic_entries.pop(0)
+            if not any(entry.key == evicted.key for entry in self.semantic_entries):
+                self.exact.pop(evicted.key, None)
 
 
 class RetrievalCache:
@@ -148,7 +150,7 @@ class RetrievalCache:
         vec, _ = self.embedding_cache.get(query)
         self.entries.append(SemanticEntry(key=normalize_text(query), vector=vec, payload=payload))
         if len(self.entries) > self.max_entries:
-            self.entries = self.entries[-self.max_entries :]
+            self.entries = self.entries[-self.max_entries:]
 
 
 class ToolCache:
@@ -192,8 +194,10 @@ class ToolCache:
         self.exact[key] = result
         vec, _ = self.embedding_cache.get(key)
         self.semantic_entries.append(SemanticEntry(key=key, vector=vec, payload=result))
-        if len(self.semantic_entries) > self.max_entries:
-            self.semantic_entries = self.semantic_entries[-self.max_entries :]
+        while len(self.semantic_entries) > self.max_entries:
+            evicted = self.semantic_entries.pop(0)
+            if not any(entry.key == evicted.key for entry in self.semantic_entries):
+                self.exact.pop(evicted.key, None)
 
 
 class CacheManager:

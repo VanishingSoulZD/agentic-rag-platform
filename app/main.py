@@ -182,7 +182,8 @@ def metrics() -> PlainTextResponse:
 async def agent_trace(req: AgentTraceRequest, request: Request) -> dict[str, object]:
     sanitized_question = sanitize_user_input(req.question)
     embedding_hits_before = cache_manager.embedding_cache.hits
-    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(_to_cache_key("agent_trace", sanitized_question))
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(
+        _to_cache_key("agent_trace", sanitized_question))
     if cached_payload is not None:
         request.state.cache_layers = {'response': strategy}
         if cache_manager.embedding_cache.hits > embedding_hits_before:
@@ -236,6 +237,7 @@ def view_agent_trace(trace_id: str) -> HTMLResponse:
 
 @app.post('/chat')
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
+    # todo 正确使用cache？
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
@@ -296,7 +298,8 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
         },
         'cache_layers': request.state.cache_layers,
     }
-    cache_manager.response_cache.store(cache_key, {'answer': llm_result.answer, 'session_id': req.session_id, 'use': response['use']})
+    cache_manager.response_cache.store(cache_key, {'answer': llm_result.answer, 'session_id': req.session_id,
+                                                   'use': response['use']})
     return response
 
 
