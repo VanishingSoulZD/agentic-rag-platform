@@ -194,6 +194,46 @@ def test_chat_stream_outputs_token_then_usage_events() -> None:
     _cleanup_session(session_id)
 
 
+def test_chat_stream_response_cache_hit_reduces_stream_llm_calls(monkeypatch) -> None:
+    session_id = 'test_chat_stream_response_cache_hit_reduces_stream_llm_calls'
+    _cleanup_session(session_id)
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
+
+    call_count = {'n': 0}
+
+    async def _fake_stream_chat(_history):
+        call_count['n'] += 1
+        yield {'type': 'token', 'content': 'hello'}
+        yield {
+            'type': 'usage',
+            'prompt_tokens': 3,
+            'completion_tokens': 4,
+            'total_tokens': 7,
+            'model': 'mock',
+            'mock': True,
+        }
+
+    monkeypatch.setattr(main.llm_client, 'stream_chat', _fake_stream_chat)
+
+    payload = {'message': 'hello stream cache', 'session_id': session_id}
+    with client.stream('POST', '/chat/stream', json=payload) as first:
+        assert first.status_code == 200
+        first_lines = [line for line in first.iter_lines() if line]
+    with client.stream('POST', '/chat/stream', json=payload) as second:
+        assert second.status_code == 200
+        second_lines = [line for line in second.iter_lines() if line]
+
+    assert call_count['n'] == 1
+    first_data = [line for line in first_lines if line.startswith('data: ')]
+    second_data = [line for line in second_lines if line.startswith('data: ')]
+    assert any('\"total_tokens\": 7' in item for item in first_data)
+    assert any('\"model\": \"cache\"' in item for item in second_data)
+
+    _cleanup_session(session_id)
+
+
 def test_rag_returns_retrieval_based_answer_and_doc_ids(monkeypatch) -> None:
     class _FakeLLMResult:
         answer = 'RAG final answer'
@@ -291,11 +331,11 @@ def test_query_rag_semantic_cache_hit_reduces_llm_calls(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    # reset cache state + avoid external model loading
-    main.semantic_cache.entries = []
-    main.semantic_cache.hits = 0
-    main.semantic_cache.lookups = 0
-    main.semantic_cache._model_failed = True
+    # reset layered caches + avoid external model loading
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.retrieval_cache.entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
 
     payload = {'query': 'what is faiss', 'session_id': 'cache-s1', 'k': 2, 'rewrite_query': False}
     r1 = client.post('/rag/query', json=payload)
@@ -331,8 +371,10 @@ def test_query_rag_rate_limiter_per_session(monkeypatch) -> None:
     main.rag_rate_limiter.limit = 1
     main.rag_rate_limiter.window_seconds = 60
     main.rag_rate_limiter._events.clear()
-    main.semantic_cache.entries = []
-    main.semantic_cache._model_failed = True
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.retrieval_cache.entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
 
     payload = {'query': 'what is faiss', 'session_id': 'limit-s1', 'k': 1, 'rewrite_query': False}
     first = client.post('/rag/query', json=payload)
