@@ -194,8 +194,8 @@ def test_chat_stream_outputs_token_then_usage_events() -> None:
     _cleanup_session(session_id)
 
 
-def test_chat_stream_response_cache_hit_reduces_stream_llm_calls(monkeypatch) -> None:
-    session_id = 'test_chat_stream_response_cache_hit_reduces_stream_llm_calls'
+def test_chat_stream_cache_key_includes_history_context(monkeypatch) -> None:
+    session_id = 'test_chat_stream_cache_key_includes_history_context'
     _cleanup_session(session_id)
     main.cache_manager.response_cache.exact = {}
     main.cache_manager.response_cache.semantic_entries = []
@@ -225,11 +225,11 @@ def test_chat_stream_response_cache_hit_reduces_stream_llm_calls(monkeypatch) ->
         assert second.status_code == 200
         second_lines = [line for line in second.iter_lines() if line]
 
-    assert call_count['n'] == 1
+    assert call_count['n'] == 2
     first_data = [line for line in first_lines if line.startswith('data: ')]
     second_data = [line for line in second_lines if line.startswith('data: ')]
     assert any('\"total_tokens\": 7' in item for item in first_data)
-    assert any('\"model\": \"cache\"' in item for item in second_data)
+    assert any('\"total_tokens\": 7' in item for item in second_data)
 
     _cleanup_session(session_id)
 
@@ -346,6 +346,41 @@ def test_query_rag_semantic_cache_hit_reduces_llm_calls(monkeypatch) -> None:
     assert call_count['n'] == 1
     assert r1.json()['cache']['hit'] is False
     assert r2.json()['cache']['hit'] is True
+
+
+def test_query_rag_retrieval_cache_respects_k(monkeypatch) -> None:
+    class _FakeLLMResult:
+        answer = 'answer'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 1
+        completion_tokens = 1
+        total_tokens = 2
+
+    def _fake_rag_search(query: str, k: int = 5):
+        docs = [{'doc_id': f'doc{i}.txt', 'text': f't{i}', 'rerank_score': 1.0 - (i * 0.01)} for i in range(1, k + 1)]
+        return {'query': query, 'doc_ids': [d['doc_id'] for d in docs], 'docs': docs}
+
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
+
+    monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    main.cache_manager.response_cache.exact = {}
+    main.cache_manager.response_cache.semantic_entries = []
+    main.cache_manager.retrieval_cache.entries = []
+    main.cache_manager.embedding_cache.provider._model_failed = True
+
+    payload_k1 = {'query': 'what is faiss', 'session_id': 'k-s1', 'k': 1, 'rewrite_query': False}
+    payload_k3 = {'query': 'what is faiss', 'session_id': 'k-s2', 'k': 3, 'rewrite_query': False}
+    r1 = client.post('/rag/query', json=payload_k1)
+    r2 = client.post('/rag/query', json=payload_k3)
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert len(r1.json()['doc_ids']) == 1
+    assert len(r2.json()['doc_ids']) == 3
 
 
 def test_query_rag_rate_limiter_per_session(monkeypatch) -> None:

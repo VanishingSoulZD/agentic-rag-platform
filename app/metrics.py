@@ -8,6 +8,11 @@ from pathlib import Path
 
 
 class MetricsStore:
+    CSV_HEADER = (
+        'ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit,'
+        'response_cache_hit,retrieval_cache_hit,embedding_cache_hit,tool_cache_hit'
+    )
+
     def __init__(self, csv_path: str | None = None):
         self._lock = threading.Lock()
         self._request_count = 0
@@ -25,10 +30,39 @@ class MetricsStore:
         self.csv_path = Path(csv_path or os.getenv('METRICS_CSV_PATH', 'reports/metrics_events.csv'))
         self.csv_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.csv_path.exists():
-            self.csv_path.write_text(
-                'ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit,response_cache_hit,retrieval_cache_hit,embedding_cache_hit,tool_cache_hit\n',
-                encoding='utf-8',
-            )
+            self.csv_path.write_text(f'{self.CSV_HEADER}\n', encoding='utf-8')
+        else:
+            self._migrate_csv_if_needed()
+
+    def _migrate_csv_if_needed(self) -> None:
+        with self.csv_path.open('r', encoding='utf-8', newline='') as fp:
+            rows = list(csv.reader(fp))
+        if not rows:
+            self.csv_path.write_text(f'{self.CSV_HEADER}\n', encoding='utf-8')
+            return
+
+        expected = self.CSV_HEADER.split(',')
+        current_header = rows[0]
+        if current_header == expected:
+            return
+
+        if current_header[:10] == expected[:10]:
+            migrated_rows = [expected]
+            for row in rows[1:]:
+                if not any(row):
+                    continue
+                base = row[:10]
+                while len(base) < 10:
+                    base.append('')
+                migrated_rows.append([*base, '0', '0', '0', '0'])
+            with self.csv_path.open('w', encoding='utf-8', newline='') as fp:
+                writer = csv.writer(fp)
+                writer.writerows(migrated_rows)
+            return
+
+        with self.csv_path.open('w', encoding='utf-8', newline='') as fp:
+            writer = csv.writer(fp)
+            writer.writerow(expected)
 
     @staticmethod
     def _percentile(values: list[float], percentile: float) -> float:

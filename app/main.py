@@ -302,9 +302,10 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
+    history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
-    cache_key = _to_cache_key("chat_stream", req.session_id, sanitized_message)
+    cache_key = _to_cache_key("chat_stream", req.session_id, history_before[-8:], sanitized_message)
     cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
 
     if cached_payload is not None:
@@ -470,8 +471,9 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
 
     layer_hits: dict[str, str] = {}
     embedding_hits_before = cache_manager.embedding_cache.hits
+    response_cache_key = f"{query}\n[k={k}]\n[rewrite={rewrite_query}]"
 
-    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(query)
+    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(response_cache_key)
     if cached_payload is not None:
         layer_hits['response'] = response_strategy
         if cache_manager.embedding_cache.hits > embedding_hits_before:
@@ -502,10 +504,11 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     if rewrite_query:
         rewritten_query = await _rewrite_query_with_history(query, history)
 
-    retrieval_result, retrieval_sim, retrieval_strategy = cache_manager.retrieval_cache.lookup(rewritten_query)
+    retrieval_cache_key = f"{rewritten_query}\n[k={k}]"
+    retrieval_result, retrieval_sim, retrieval_strategy = cache_manager.retrieval_cache.lookup(retrieval_cache_key)
     if retrieval_result is None:
         retrieval_result = rag_search(rewritten_query, k=k)
-        cache_manager.retrieval_cache.store(rewritten_query, retrieval_result)
+        cache_manager.retrieval_cache.store(retrieval_cache_key, retrieval_result)
     else:
         layer_hits['retrieval'] = retrieval_strategy
     if cache_manager.embedding_cache.hits > embedding_hits_before:
@@ -548,7 +551,7 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
         },
         'cache_layers': layer_hits,
     }
-    cache_manager.response_cache.store(query, response)
+    cache_manager.response_cache.store(response_cache_key, response)
 
     logger.info(
         'query_rag_trace session_id=%s rewritten_query=%s cache_hit=%s doc_ids=%s rerank_scores=%s cache_layers=%s',
