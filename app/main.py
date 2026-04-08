@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -50,6 +51,16 @@ rag_rate_limiter = SessionRateLimiter(
     window_seconds=int(os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60')),
 )
 planner_executor_agent = PlannerExecutorAgent(tool_cache=cache_manager.tool_cache)
+
+
+def _to_cache_key(prefix: str, *parts: object) -> str:
+    payload = "|".join([prefix, *[json.dumps(part, ensure_ascii=False, sort_keys=True) for part in parts]])
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
+
+
+def _has_serving_cache_hit(cache_layers: dict[str, str]) -> bool:
+    return any(layer in cache_layers for layer in ("response", "retrieval", "tool"))
 
 
 class ChatRequest(BaseModel):
@@ -168,17 +179,49 @@ def metrics() -> PlainTextResponse:
 
 
 @app.post('/agent/trace')
-async def agent_trace(req: AgentTraceRequest) -> dict[str, object]:
-    execution_result = await planner_executor_agent.execute(sanitize_user_input(req.question))
+async def agent_trace(req: AgentTraceRequest, request: Request) -> dict[str, object]:
+    sanitized_question = sanitize_user_input(req.question)
+    embedding_hits_before = cache_manager.embedding_cache.hits
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(
+        _to_cache_key("agent_trace", sanitized_question))
+    if cached_payload is not None:
+        request.state.cache_layers = {'response': strategy}
+        if cache_manager.embedding_cache.hits > embedding_hits_before:
+            request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
+        return {
+            **cached_payload,
+            'cache': {
+                'hit': True,
+                'layer': 'response',
+                'strategy': strategy,
+                'similarity': similarity,
+            },
+            'cache_layers': request.state.cache_layers,
+        }
+
+    execution_result = await planner_executor_agent.execute(sanitized_question)
     graph = build_execution_graph(execution_result)
     trace_id, output_path = save_execution_graph(graph)
 
-    return {
+    response = {
         'trace_id': trace_id,
         'graph_file': str(output_path),
         'graph': graph,
         'answer': execution_result['answer'],
+        'cache': {
+            'hit': False,
+            'layer': None,
+            'strategy': 'miss',
+            'similarity': similarity,
+        },
     }
+    cache_manager.response_cache.store(_to_cache_key("agent_trace", sanitized_question), response)
+    request.state.cache_layers = dict(execution_result.get('cache_layers', {}))
+    if cache_manager.embedding_cache.hits > embedding_hits_before:
+        request.state.cache_layers['embedding'] = 'exact'
+    request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
+    return response
 
 
 @app.get('/agent/trace/{trace_id}')
@@ -196,9 +239,32 @@ def view_agent_trace(trace_id: str) -> HTMLResponse:
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     # todo 正确使用cache？
     history_before = chat_store.get_memory(req.session_id)
-    request.state.cache_hit = len(history_before) > 0
-
     sanitized_message = sanitize_user_input(req.message)
+    embedding_hits_before = cache_manager.embedding_cache.hits
+    cache_key = _to_cache_key("chat", req.session_id, history_before[-8:], sanitized_message)
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
+
+    if cached_payload is not None:
+        chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
+        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': str(cached_payload['answer'])})
+        request.state.cache_layers = {'response': strategy}
+        if cache_manager.embedding_cache.hits > embedding_hits_before:
+            request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
+        request.state.prompt_tokens = 0
+        request.state.completion_tokens = 0
+        return {
+            **cached_payload,
+            'history': chat_store.get_memory(req.session_id),
+            'cache': {
+                'hit': True,
+                'layer': 'response',
+                'strategy': strategy,
+                'similarity': similarity,
+            },
+            'cache_layers': request.state.cache_layers,
+        }
+
     chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
 
     history = chat_store.get_memory(req.session_id)
@@ -208,8 +274,12 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
     request.state.prompt_tokens = llm_result.prompt_tokens
     request.state.completion_tokens = llm_result.completion_tokens
+    request.state.cache_layers = {}
+    if cache_manager.embedding_cache.hits > embedding_hits_before:
+        request.state.cache_layers['embedding'] = 'exact'
+    request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
 
-    return {
+    response = {
         'answer': llm_result.answer,
         'session_id': req.session_id,
         'history': chat_store.get_memory(req.session_id),
@@ -220,14 +290,68 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
             'completion_tokens': llm_result.completion_tokens,
             'total_tokens': llm_result.total_tokens,
         },
+        'cache': {
+            'hit': False,
+            'layer': None,
+            'strategy': 'miss',
+            'similarity': 0.0,
+        },
+        'cache_layers': request.state.cache_layers,
     }
+    cache_manager.response_cache.store(cache_key, {'answer': llm_result.answer, 'session_id': req.session_id,
+                                                   'use': response['use']})
+    return response
 
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
     history_before = chat_store.get_memory(req.session_id)
-    cache_hit = len(history_before) > 0
     sanitized_message = sanitize_user_input(req.message)
+    embedding_hits_before = cache_manager.embedding_cache.hits
+    cache_key = _to_cache_key("chat_stream", req.session_id, history_before[-8:], sanitized_message)
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
+
+    if cached_payload is not None:
+        request.state.cache_layers = {'response': strategy}
+        if cache_manager.embedding_cache.hits > embedding_hits_before:
+            request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
+        cached_answer = str(cached_payload.get('answer', ''))
+        chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
+        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': cached_answer})
+
+        async def cached_event_gen():
+            request_start = time.perf_counter()
+            first_token_at = None
+            try:
+                for token in cached_answer.split():
+                    if first_token_at is None:
+                        first_token_at = time.perf_counter()
+                    yield f"data: {json.dumps({'type': 'token', 'content': token + ' '}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'usage', 'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0, 'model': 'cache', 'mock': True}, ensure_ascii=False)}\n\n"
+                yield 'data: [DONE]\n\n'
+            finally:
+                elapsed_ms = (time.perf_counter() - request_start) * 1000
+                ttft_ms = (first_token_at - request_start) * 1000 if first_token_at is not None else None
+                metrics_store.record_request(
+                    method='POST',
+                    path='/chat/stream',
+                    status_code=200,
+                    response_time_ms=elapsed_ms,
+                    success=True,
+                    ttft_ms=ttft_ms,
+                    prompt_tokens=0,
+                    completion_tokens=0,
+                    cache_hit=True,
+                    cache_layers=request.state.cache_layers,
+                )
+
+        return StreamingResponse(cached_event_gen(), media_type='text/event-stream')
+
+    request.state.cache_layers = {}
+    if cache_manager.embedding_cache.hits > embedding_hits_before:
+        request.state.cache_layers['embedding'] = 'exact'
+    request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
     chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
     history = chat_store.get_memory(req.session_id)
 
@@ -280,7 +404,15 @@ async def chat_stream(req: ChatRequest, request: Request):
                 ttft_ms=ttft_ms,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
-                cache_hit=cache_hit,
+                cache_hit=False,
+                cache_layers=request.state.cache_layers,
+            )
+            cache_manager.response_cache.store(
+                cache_key,
+                {
+                    'answer': full_answer,
+                    'session_id': req.session_id,
+                },
             )
 
     return StreamingResponse(event_gen(), media_type='text/event-stream')
@@ -341,10 +473,14 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
         }
 
     layer_hits: dict[str, str] = {}
+    embedding_hits_before = cache_manager.embedding_cache.hits
+    response_cache_key = f"{query}\n[k={k}]\n[rewrite={rewrite_query}]"
 
-    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(query)
+    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(response_cache_key)
     if cached_payload is not None:
         layer_hits['response'] = response_strategy
+        if cache_manager.embedding_cache.hits > embedding_hits_before:
+            layer_hits['embedding'] = 'exact'
         cached_resp = {
             **cached_payload,
             'cache': {
@@ -371,12 +507,15 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     if rewrite_query:
         rewritten_query = await _rewrite_query_with_history(query, history)
 
-    retrieval_result, retrieval_sim, retrieval_strategy = cache_manager.retrieval_cache.lookup(rewritten_query)
+    retrieval_cache_key = f"{rewritten_query}\n[k={k}]"
+    retrieval_result, retrieval_sim, retrieval_strategy = cache_manager.retrieval_cache.lookup(retrieval_cache_key)
     if retrieval_result is None:
         retrieval_result = rag_search(rewritten_query, k=k)
-        cache_manager.retrieval_cache.store(rewritten_query, retrieval_result)
+        cache_manager.retrieval_cache.store(retrieval_cache_key, retrieval_result)
     else:
         layer_hits['retrieval'] = retrieval_strategy
+    if cache_manager.embedding_cache.hits > embedding_hits_before:
+        layer_hits['embedding'] = 'exact'
 
     docs = retrieval_result['docs']
     doc_ids = retrieval_result['doc_ids']
@@ -408,20 +547,20 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
             'total_tokens': llm_result.total_tokens,
         },
         'cache': {
-            'hit': bool(layer_hits),
+            'hit': _has_serving_cache_hit(layer_hits),
             'layer': 'retrieval' if 'retrieval' in layer_hits else None,
             'strategy': layer_hits.get('retrieval', 'miss'),
             'similarity': retrieval_sim,
         },
         'cache_layers': layer_hits,
     }
-    cache_manager.response_cache.store(query, response)
+    cache_manager.response_cache.store(response_cache_key, response)
 
     logger.info(
         'query_rag_trace session_id=%s rewritten_query=%s cache_hit=%s doc_ids=%s rerank_scores=%s cache_layers=%s',
         session_id,
         rewritten_query,
-        bool(layer_hits),
+        _has_serving_cache_hit(layer_hits),
         doc_ids,
         rerank_scores,
         layer_hits,
@@ -431,7 +570,6 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
 
 @app.post('/rag/query')
 async def rag_query(req: RagQueryRequest, request: Request):
-    history = chat_store.get_memory(req.session_id)
     request.state.cache_hit = False
     sanitized_query = sanitize_user_input(req.query)
     response = await _execute_rag_pipeline(sanitized_query, req.session_id, req.k, req.rewrite_query)
@@ -440,5 +578,5 @@ async def rag_query(req: RagQueryRequest, request: Request):
     request.state.prompt_tokens = response['use']['prompt_tokens']
     request.state.completion_tokens = response['use']['completion_tokens']
     request.state.cache_layers = response.get('cache_layers', {})
-    request.state.cache_hit = bool(request.state.cache_layers)
+    request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
     return response

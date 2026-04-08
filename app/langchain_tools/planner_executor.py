@@ -28,11 +28,11 @@ class PlannerExecutorAgent:
     """Planner -> Executor -> Summary (LLM) workflow."""
 
     def __init__(
-        self,
-        db_path: Path = DEFAULT_DB_PATH,
-        llm_client: AsyncLLMClient | None = None,
-        tool_policy: ToolUsePolicy | None = None,
-        tool_cache: ToolCache | None = None,
+            self,
+            db_path: Path = DEFAULT_DB_PATH,
+            llm_client: AsyncLLMClient | None = None,
+            tool_policy: ToolUsePolicy | None = None,
+            tool_cache: ToolCache | None = None,
     ):
         self.db_path = db_path
         self.llm_client = llm_client or AsyncLLMClient()
@@ -96,12 +96,15 @@ class PlannerExecutorAgent:
         sanitized_question = sanitize_user_input(question)
         steps = self.planner(sanitized_question)
         observations: list[dict[str, Any]] = []
+        cache_layers: dict[str, str] = {}
 
         for step in steps:
             if step.kind != "tool":
                 continue
 
-            result = self._call_tool(step.tool_name or "", step.tool_input or "")
+            result, strategy = self._call_tool(step.tool_name or "", step.tool_input or "")
+            if strategy in {"exact", "semantic"}:
+                cache_layers["tool"] = strategy
             observations.append(
                 {
                     "step_id": step.step_id,
@@ -117,15 +120,16 @@ class PlannerExecutorAgent:
             "plan": [step.__dict__ for step in steps],
             "observations": observations,
             "answer": summary,
+            "cache_layers": cache_layers,
         }
 
-    def _call_tool(self, tool_name: str, tool_input: str) -> str:
+    def _call_tool(self, tool_name: str, tool_input: str) -> tuple[str, str]:
         self.tool_policy.enforce(tool_name)
 
         if self.tool_cache is not None:
             cached, _, strategy = self.tool_cache.lookup(tool_name, tool_input)
             if strategy in {"exact", "semantic"} and cached is not None:
-                return cached
+                return cached, strategy
 
         if tool_name == "Calculator":
             result = calculate_expression(tool_input)
@@ -138,7 +142,7 @@ class PlannerExecutorAgent:
 
         if self.tool_cache is not None:
             self.tool_cache.store(tool_name, tool_input, result)
-        return result
+        return result, "miss"
 
     async def _summary_step(self, question: str, steps: list[PlanStep], observations: list[dict[str, Any]]) -> str:
         summary_payload = {

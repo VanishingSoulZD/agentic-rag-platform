@@ -150,7 +150,7 @@ class RetrievalCache:
         vec, _ = self.embedding_cache.get(query)
         self.entries.append(SemanticEntry(key=normalize_text(query), vector=vec, payload=payload))
         if len(self.entries) > self.max_entries:
-            self.entries = self.entries[-self.max_entries :]
+            self.entries = self.entries[-self.max_entries:]
 
 
 class ToolCache:
