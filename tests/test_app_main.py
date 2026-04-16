@@ -332,21 +332,155 @@ def test_query_rag_rate_limiter_per_session(monkeypatch) -> None:
     monkeypatch.setattr(main, 'rag_search', _fake_rag_search)
     monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
 
-    # force rate limit on second request
-    main.rag_rate_limiter.limit = 1
-    main.rag_rate_limiter.window_seconds = 60
-    main.rag_rate_limiter._events.clear()
-    main.cache_manager.response_cache.exact = {}
-    main.cache_manager.response_cache.semantic_entries = []
-    main.cache_manager.retrieval_cache.entries = []
-    main.cache_manager.embedding_cache.provider._model_failed = True
+    old_limit = main.session_rate_limiter.limit
+    old_window_seconds = main.session_rate_limiter.window_seconds
 
-    payload = {'query': 'what is faiss', 'session_id': 'limit-s1', 'k': 1, 'rewrite_query': False}
-    first = client.post('/rag/query', json=payload)
-    second = client.post('/rag/query', json=payload)
+    try:
+        # force rate limit on second request
+        main.session_rate_limiter.limit = 1
+        main.session_rate_limiter.window_seconds = 60
+        main.session_rate_limiter._events.clear()
+        main.cache_manager.response_cache.exact = {}
+        main.cache_manager.response_cache.semantic_entries = []
+        main.cache_manager.retrieval_cache.entries = []
+        main.cache_manager.embedding_cache.provider._model_failed = True
 
-    assert first.status_code == 200
-    assert second.status_code == 429
-    body = second.json()
-    assert body['error'] == 'rate_limited'
-    assert body['code'] == 429
+        payload = {'query': 'what is faiss', 'session_id': 'limit-s1', 'k': 1, 'rewrite_query': False}
+        first = client.post('/rag/query', json=payload)
+        second = client.post('/rag/query', json=payload)
+
+        assert first.status_code == 200
+        assert second.status_code == 429
+        body = second.json()
+        assert body['error'] == 'rate_limited'
+        assert body['code'] == 429
+    finally:
+        main.session_rate_limiter.limit = old_limit
+        main.session_rate_limiter.window_seconds = old_window_seconds
+        main.session_rate_limiter._events.clear()
+
+
+def test_chat_rate_limiter_per_session(monkeypatch) -> None:
+    class _FakeLLMResult:
+        answer = 'ok'
+        model = 'mock'
+        mock = True
+        prompt_tokens = 1
+        completion_tokens = 1
+        total_tokens = 2
+
+    async def _fake_chat(_messages):
+        return _FakeLLMResult()
+
+    monkeypatch.setattr(main.llm_client, 'chat', _fake_chat)
+
+    session_id = 'test_chat_rate_limiter_per_session'
+    _cleanup_session(session_id)
+
+    old_limit = main.session_rate_limiter.limit
+    old_window_seconds = main.session_rate_limiter.window_seconds
+
+    try:
+        main.session_rate_limiter.limit = 1
+        main.session_rate_limiter.window_seconds = 60
+        main.session_rate_limiter._events.clear()
+
+        first = client.post('/chat', json={'message': 'hello', 'session_id': session_id})
+        second = client.post('/chat', json={'message': 'again', 'session_id': session_id})
+
+        assert first.status_code == 200
+        assert second.status_code == 429
+        body = second.json()
+        assert body['error'] == 'rate_limited'
+        assert body['code'] == 429
+    finally:
+        main.session_rate_limiter.limit = old_limit
+        main.session_rate_limiter.window_seconds = old_window_seconds
+        main.session_rate_limiter._events.clear()
+        _cleanup_session(session_id)
+
+
+def test_chat_stream_rate_limiter_per_session(monkeypatch) -> None:
+    async def _fake_stream_chat(_history):
+        yield {'type': 'token', 'content': 'hello'}
+        yield {
+            'type': 'usage',
+            'prompt_tokens': 1,
+            'completion_tokens': 1,
+            'total_tokens': 2,
+            'model': 'mock',
+            'mock': True,
+        }
+
+    monkeypatch.setattr(main.llm_client, 'stream_chat', _fake_stream_chat)
+
+    session_id = 'test_chat_stream_rate_limiter_per_session'
+    _cleanup_session(session_id)
+
+    old_limit = main.session_rate_limiter.limit
+    old_window_seconds = main.session_rate_limiter.window_seconds
+
+    try:
+        main.session_rate_limiter.limit = 1
+        main.session_rate_limiter.window_seconds = 60
+        main.session_rate_limiter._events.clear()
+
+        with client.stream('POST', '/chat/stream', json={'message': 'hello', 'session_id': session_id}) as first:
+            assert first.status_code == 200
+            list(first.iter_lines())
+
+        with client.stream('POST', '/chat/stream', json={'message': 'again', 'session_id': session_id}) as second:
+            assert second.status_code == 429
+            body = b''.join(second.iter_bytes()).decode()
+
+        assert json.loads(body)['error'] == 'rate_limited'
+    finally:
+        main.session_rate_limiter.limit = old_limit
+        main.session_rate_limiter.window_seconds = old_window_seconds
+        main.session_rate_limiter._events.clear()
+        _cleanup_session(session_id)
+
+
+def test_chat_stream_rate_limited_requests_are_recorded_in_metrics(monkeypatch) -> None:
+    async def _fake_stream_chat(_history):
+        yield {'type': 'token', 'content': 'hello'}
+        yield {
+            'type': 'usage',
+            'prompt_tokens': 1,
+            'completion_tokens': 1,
+            'total_tokens': 2,
+            'model': 'mock',
+            'mock': True,
+        }
+
+    monkeypatch.setattr(main.llm_client, 'stream_chat', _fake_stream_chat)
+
+    session_id = 'test_chat_stream_rate_limited_requests_are_recorded_in_metrics'
+    _cleanup_session(session_id)
+
+    old_limit = main.session_rate_limiter.limit
+    old_window_seconds = main.session_rate_limiter.window_seconds
+    request_count_before = main.metrics_store._request_count
+    success_count_before = main.metrics_store._success_count
+
+    try:
+        main.session_rate_limiter.limit = 1
+        main.session_rate_limiter.window_seconds = 60
+        main.session_rate_limiter._events.clear()
+
+        with client.stream('POST', '/chat/stream', json={'message': 'hello', 'session_id': session_id}) as first:
+            assert first.status_code == 200
+            list(first.iter_lines())
+
+        with client.stream('POST', '/chat/stream', json={'message': 'again', 'session_id': session_id}) as second:
+            assert second.status_code == 429
+            body = b''.join(second.iter_bytes()).decode()
+
+        assert json.loads(body)['error'] == 'rate_limited'
+        assert main.metrics_store._request_count == request_count_before + 2
+        assert main.metrics_store._success_count == success_count_before + 2
+    finally:
+        main.session_rate_limiter.limit = old_limit
+        main.session_rate_limiter.window_seconds = old_window_seconds
+        main.session_rate_limiter._events.clear()
+        _cleanup_session(session_id)

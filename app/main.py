@@ -46,9 +46,11 @@ llm_client = AsyncLLMClient(
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
 )
 cache_manager = CacheManager()
-rag_rate_limiter = SessionRateLimiter(
-    limit=int(os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20')),
-    window_seconds=int(os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60')),
+session_rate_limiter = SessionRateLimiter(
+    limit=int(os.getenv('SESSION_RATE_LIMIT_PER_MINUTE', os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20'))),
+    window_seconds=int(
+        os.getenv('SESSION_RATE_LIMIT_WINDOW_SECONDS', os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60'))
+    ),
 )
 planner_executor_agent = PlannerExecutorAgent(tool_cache=cache_manager.tool_cache)
 
@@ -61,6 +63,10 @@ def _to_cache_key(prefix: str, *parts: object) -> str:
 
 def _has_serving_cache_hit(cache_layers: dict[str, str]) -> bool:
     return any(layer in cache_layers for layer in ("response", "retrieval", "tool"))
+
+
+def _should_record_metrics_in_middleware(request: Request) -> bool:
+    return request.url.path != '/chat/stream'
 
 
 class ChatRequest(BaseModel):
@@ -77,6 +83,19 @@ class RagQueryRequest(BaseModel):
 
 class AgentTraceRequest(BaseModel):
     question: str
+
+
+def _rate_limited_payload(session_id: str) -> dict[str, object] | None:
+    allowed, retry_after = session_rate_limiter.allow(session_id)
+    if allowed:
+        return None
+
+    return {
+        'error': 'rate_limited',
+        'code': 429,
+        'retry_after_seconds': retry_after,
+        'session_id': session_id,
+    }
 
 
 @app.middleware('http')
@@ -102,7 +121,7 @@ async def log_request_response(request: Request, call_next):
             request.url.path,
             elapsed_ms,
         )
-        if request.url.path != '/chat/stream':
+        if _should_record_metrics_in_middleware(request):
             metrics_store.record_request(
                 method=request.method,
                 path=request.url.path,
@@ -237,7 +256,10 @@ def view_agent_trace(trace_id: str) -> HTMLResponse:
 
 @app.post('/chat')
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
-    # todo 正确使用cache？
+    rate_limited = _rate_limited_payload(req.session_id)
+    if rate_limited is not None:
+        return JSONResponse(status_code=429, content=rate_limited)
+
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
@@ -305,6 +327,24 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
+    request_start = time.perf_counter()
+    rate_limited = _rate_limited_payload(req.session_id)
+    if rate_limited is not None:
+        elapsed_ms = (time.perf_counter() - request_start) * 1000
+        metrics_store.record_request(
+            method='POST',
+            path='/chat/stream',
+            status_code=429,
+            response_time_ms=elapsed_ms,
+            success=True,
+            ttft_ms=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            cache_hit=False,
+            cache_layers={},
+        )
+        return JSONResponse(status_code=429, content=rate_limited)
+
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
@@ -463,14 +503,9 @@ def _build_rag_messages(
 
 
 async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_query: bool) -> dict[str, object]:
-    allowed, retry_after = rag_rate_limiter.allow(session_id)
-    if not allowed:
-        return {
-            'error': 'rate_limited',
-            'code': 429,
-            'retry_after_seconds': retry_after,
-            'session_id': session_id,
-        }
+    rate_limited = _rate_limited_payload(session_id)
+    if rate_limited is not None:
+        return rate_limited
 
     layer_hits: dict[str, str] = {}
     embedding_hits_before = cache_manager.embedding_cache.hits
