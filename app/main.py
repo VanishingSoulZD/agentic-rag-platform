@@ -65,6 +65,10 @@ def _has_serving_cache_hit(cache_layers: dict[str, str]) -> bool:
     return any(layer in cache_layers for layer in ("response", "retrieval", "tool"))
 
 
+def _should_record_metrics_in_middleware(request: Request) -> bool:
+    return request.url.path != '/chat/stream'
+
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str
@@ -117,7 +121,7 @@ async def log_request_response(request: Request, call_next):
             request.url.path,
             elapsed_ms,
         )
-        if request.url.path != '/chat/stream':
+        if _should_record_metrics_in_middleware(request):
             metrics_store.record_request(
                 method=request.method,
                 path=request.url.path,
@@ -323,8 +327,22 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
+    request_start = time.perf_counter()
     rate_limited = _rate_limited_payload(req.session_id)
     if rate_limited is not None:
+        elapsed_ms = (time.perf_counter() - request_start) * 1000
+        metrics_store.record_request(
+            method='POST',
+            path='/chat/stream',
+            status_code=429,
+            response_time_ms=elapsed_ms,
+            success=True,
+            ttft_ms=None,
+            prompt_tokens=0,
+            completion_tokens=0,
+            cache_hit=False,
+            cache_layers={},
+        )
         return JSONResponse(status_code=429, content=rate_limited)
 
     history_before = chat_store.get_memory(req.session_id)
