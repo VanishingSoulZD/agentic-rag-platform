@@ -46,9 +46,11 @@ llm_client = AsyncLLMClient(
     max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
 )
 cache_manager = CacheManager()
-rag_rate_limiter = SessionRateLimiter(
-    limit=int(os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20')),
-    window_seconds=int(os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60')),
+session_rate_limiter = SessionRateLimiter(
+    limit=int(os.getenv('SESSION_RATE_LIMIT_PER_MINUTE', os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20'))),
+    window_seconds=int(
+        os.getenv('SESSION_RATE_LIMIT_WINDOW_SECONDS', os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60'))
+    ),
 )
 planner_executor_agent = PlannerExecutorAgent(tool_cache=cache_manager.tool_cache)
 
@@ -77,6 +79,19 @@ class RagQueryRequest(BaseModel):
 
 class AgentTraceRequest(BaseModel):
     question: str
+
+
+def _rate_limited_payload(session_id: str) -> dict[str, object] | None:
+    allowed, retry_after = session_rate_limiter.allow(session_id)
+    if allowed:
+        return None
+
+    return {
+        'error': 'rate_limited',
+        'code': 429,
+        'retry_after_seconds': retry_after,
+        'session_id': session_id,
+    }
 
 
 @app.middleware('http')
@@ -237,7 +252,10 @@ def view_agent_trace(trace_id: str) -> HTMLResponse:
 
 @app.post('/chat')
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
-    # todo 正确使用cache？
+    rate_limited = _rate_limited_payload(req.session_id)
+    if rate_limited is not None:
+        return JSONResponse(status_code=429, content=rate_limited)
+
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
@@ -305,6 +323,10 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
 
 @app.post('/chat/stream')
 async def chat_stream(req: ChatRequest, request: Request):
+    rate_limited = _rate_limited_payload(req.session_id)
+    if rate_limited is not None:
+        return JSONResponse(status_code=429, content=rate_limited)
+
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
@@ -463,14 +485,9 @@ def _build_rag_messages(
 
 
 async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_query: bool) -> dict[str, object]:
-    allowed, retry_after = rag_rate_limiter.allow(session_id)
-    if not allowed:
-        return {
-            'error': 'rate_limited',
-            'code': 429,
-            'retry_after_seconds': retry_after,
-            'session_id': session_id,
-        }
+    rate_limited = _rate_limited_payload(session_id)
+    if rate_limited is not None:
+        return rate_limited
 
     layer_hits: dict[str, str] = {}
     embedding_hits_before = cache_manager.embedding_cache.hits
