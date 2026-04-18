@@ -265,6 +265,7 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     embedding_hits_before = cache_manager.embedding_cache.hits
     cache_key = _to_cache_key("chat", req.session_id, history_before[-8:], sanitized_message)
     cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
+    logger.info(f'cached_payload={cached_payload}, similarity={similarity}, strategy={strategy}')
 
     if cached_payload is not None:
         chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
