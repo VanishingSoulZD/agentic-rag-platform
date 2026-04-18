@@ -24,7 +24,7 @@ class EmbeddingProvider:
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         self.model_name = model_name
         self._model: SentenceTransformer | None = None
-        self._model_failed = False
+        self._model_failed = True
 
     def _fallback_embed(self, text: str) -> np.ndarray:
         tokens = normalize_text(text).split()

@@ -1,309 +1,251 @@
-# Agentic RAG Platform（智能代理检索增强平台）
+# Agentic RAG Platform
 
-## Quickstart-Docker
+一个可用于**实战练习**的 Agentic RAG 项目：
 
-### 一步启动
+- FastAPI 服务化（同步 + 流式 SSE）
+- Redis 会话记忆
+- 向量检索（Embedding + FAISS + 重排）
+- Agent 工具调用（Planner / Executor + 可追踪执行图）
+- 缓存、限流、观测（Prometheus 指标 + CSV 事件）
+
+---
+
+## 1. 项目价值
+
+> “一个可生产演进的 RAG 后端骨架，不只做问答，还覆盖了工程化关键能力：可观测性、缓存策略、限流保护、Agent 工具链与可追踪执行过程。”
+
+1. **完整链路**：从 query → rewrite（可选）→ retrieval → prompt 组装 → LLM 输出。
+2. **工程能力**：统一错误处理、会话记忆、缓存、限流、metrics、压测脚本。
+3. **可解释性**：Agent trace（图结构 + 可视化页面），能解释“为什么得出这个答案”。
+
+---
+
+## 2. 核心能力速览
+
+- **基础 API**
+    - `GET /ping`：健康检查
+    - `POST /chat`：多轮会话问答（含 Redis history）
+    - `POST /chat/stream`：SSE 流式输出（含 token / usage 事件）
+- **RAG API**
+    - `POST /rag/query`：检索增强问答（支持 query rewrite、top-k）
+- **Agent API**
+    - `POST /agent/trace`：执行 Planner-Executor 并返回 trace
+    - `GET /agent/trace/{trace_id}`：读取 trace 数据
+    - `GET /agent/trace/{trace_id}/view`：Mermaid HTML 可视化
+- **观测与运维**
+    - `GET /metrics`：Prometheus 文本指标
+    - `reports/metrics_events.csv`：请求级事件落盘
+    - Grafana 预置 Dashboard（TTFT、P95、Cache Hit 等）
+
+---
+
+## 3. Quickstart（Docker）
+
+> 适合快速起服务，默认可用 Mock LLM。
+
+### 3.1 一步启动
 
 ```bash
 docker compose up --build
 ```
 
-> 启动后 API 地址：`http://127.0.0.1:8000`
+启动后：
 
-### 说明
+- API: `http://127.0.0.1:8000`
+- Prometheus: `http://127.0.0.1:9090`
+- Grafana: `http://127.0.0.1:3000`（`admin/admin`）
 
-- `docker-compose.yml` 同时启动两个服务：
-    - `api`：FastAPI 应用
-    - `redis`：会话记忆存储
-- Compose 中默认设置 `MOCK_LLM=true`，无需 OpenAI Key 即可本地联调。
-- 如需停止并删除容器：
-  docker compose down
+### 3.2 停止并清理
 
-## Quickstart-本机
+```bash
+docker compose down
+```
 
-### 1) 安装依赖
+---
+
+## 4. Quickstart（本机）
+
+> 适合本地开发调试、IDE 断点、快速改代码。
+
+### 4.1 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2) 启动 Redis（Docker）
+### 4.2 启动 Redis（Docker 方式）
 
 ```bash
 docker run -d --name agentic-rag-platform-redis -p 6379:6379 redis:7
+# 如果已存在：docker start agentic-rag-platform-redis
 ```
 
-> 若容器已存在，可先执行：`docker start agentic-rag-platform-redis`
-
-### 3) 配置 LLM（真实 OpenAI SDK 或 Mock）
+### 4.3 配置 LLM（真实 OpenAI 或 Mock）
 
 ```bash
 # 真实 LLM（可选）
 export OPENAI_API_KEY="your_api_key"
 export OPENAI_MODEL="gpt-4.1-mini"
-# export OPENAI_API_BASE="https://api.openai.com/v1"  # 如需兼容网关可设置
+# export OPENAI_API_BASE="https://api.openai.com/v1"
 
 # Mock 模式（无 key 时默认自动启用；也可显式开启）
 export MOCK_LLM=true
 ```
 
-### 4) 启动 FastAPI 应用
+### 4.4 启动 API
 
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload
 ```
 
-### 5) 验证接口
+---
+
+## 5. 演示脚本
+
+---
+
+### Script 1：3 分钟系统全览（架构 + 能力）
+
+**目标**：先建立“全局视角”的印象。
+
+1. “这是一个 Agentic RAG 平台，不只是 RAG 检索，还覆盖 Agent trace、缓存、限流、指标。”
+2. “入口是 FastAPI；会话记忆放 Redis；检索层是 Embedding + FAISS + rerank；生成层接 LLM/Mock。”
+3. “演示四类接口：`/chat`、`/chat/stream`、`/rag/query`、`/agent/trace`。”
+
+**配图**：打开 Grafana Dashboard + `/agent/trace/{trace_id}/view` 页面。
+
+---
+
+### Script 2：5 分钟 API 基线演示（鲁棒性 + 多轮会话）
+
+**目标**：证明接口设计和异常策略靠谱。  
+**命令**：
 
 ```bash
-# health check
+# 1) health
 curl -i http://127.0.0.1:8000/ping
 
-# chat（需 message + session_id）
+# 2) 参数正确
 curl -i -X POST http://127.0.0.1:8000/chat \
   -H 'Content-Type: application/json' \
-  -d '{"message":"hello","session_id":"s-1"}'
+  -d '{"message":"hello","session_id":"s1"}'
 
-# 参数校验错误（缺少 session_id）
-curl -i -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"only-message"}'
+# 3) 参数错误（缺 session_id）
+# 4) 同 session 多轮
 ```
 
-期望结果：
+**强调**：
 
-- 参数错误返回统一格式：`{"error":"invalid_request","code":422}`
-- 服务错误返回统一格式：`{"error":"internal_server_error","code":500}`
+- 有统一错误格式：`invalid_request(422)` / `internal_server_error(500)` / `rate_limited(429)`。
+- history 结构化保存，支持多轮上下文。
 
-### 6) 并发验证（5 个请求）
+---
 
-```bash
-for i in 1 2 3; do
-  curl -s -X POST http://127.0.0.1:8000/chat \
-    -H 'Content-Type: application/json' \
-    -d "{\"message\":\"hello-$i\",\"session_id\":\"s-$i\"}" &
-done
-wait
-```
+### Script 3：6 分钟 RAG 链路演示（检索增强 + 可解释结果）
 
-观察点：响应会并发返回，不会严格一个接一个串行等待。
-
-### 7) 验证聊天与会话历史（自动写入 Redis 会话历史）
+**目标**：证明不是“裸 LLM 问答”。
 
 ```bash
-# 第一轮
-curl -i -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"hello","session_id":"s-1"}'
-
-# 第二轮（同一个 session）
-curl -i -X POST http://127.0.0.1:8000/chat \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"how are you","session_id":"s-1"}'
-```
-
-期望结果：
-
-- `/chat` 返回 `history`，其中消息是 `{'role','content'}` 结构。
-- 同一 `session_id` 多轮请求可在 Redis 中累积历史（role/content 结构）。
-- 重启 FastAPI 服务后（不重启 Redis），再次请求同一 `session_id` 仍能读取之前历史。
-- 返回真实 LLM 回复（已配置 key）或 Mock 回复（未配置 key / `MOCK_LLM=true`）。
-- 返回体中包含 `use` 字段（model、mock、prompt/completion/total token）。
-
-### 8) 流式接口（SSE）
-
-```bash
-curl -N -X POST http://127.0.0.1:8000/chat/stream \
-  -H 'Content-Type: application/json' \
-  -d '{"message":"hello stream","session_id":"s-1"}'
-```
-
-期望结果：
-
-- 首个 token 会尽快以 `data: {"type":"token",...}` 事件输出。
-- 最终输出 usage 事件，包含 `prompt_tokens`、`completion_tokens`（以及 total/model/mock）。
-- 同一 `session_id` 的消息历史会写入 Redis。
-
-## 测试
-
-```bash
-pytest tests/test_app_main.py
-```
-
-> 开发约定：后续新增接口/函数/方法时，必须同步补充对应单元测试。
-
-## Embeddings + FAISS 入门
-
-```bash
-# 1) 构建索引（50 篇文档 -> token chunk -> embedding -> FAISS）
+# 构建索引（首次）
 python -m app.retrieval.build_index
 
-# 2) 运行检索验收（10 条 query，检查 top-3 是否命中）
+# 跑检索验收
 python -m app.retrieval.evaluate_retrieval
-```
 
-实现说明：
-
-- Embedding 模型：`SentenceTransformer("all-MiniLM-L6-v2")`
-- 分块方式：`tiktoken.get_encoding("cl100k_base")` + `chunk_by_token`
-- 检索流程：`FAISS top-k` + `cosine rerank` + 文档级 top-3 聚合
-
-## RAG pipeline（检索 + prompt 拼接）
-
-```bash
+# 服务化 RAG 查询
 curl -X POST http://127.0.0.1:8000/rag/query \
   -H 'Content-Type: application/json' \
-  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+  -d '{"query":"What is FAISS?","session_id":"rag-demo-1","k":5,"rewrite_query":true}'
 ```
 
-说明：
+**强调**：
 
-- `/rag/query` 流程：可选 Query Rewrite（基于 history）→ 检索/精排 → Prompt 组装（context+history）→ LLM 生成。
-- 返回包含 `answer + sources(doc chunks) + doc_ids`，并在服务端打印检索到的 `doc_ids`。
+- 返回里有 `answer + sources/doc_ids`，可追溯证据来源。
+- `rewrite_query` 体现对对话上下文的利用（不是单轮死检索）。
 
-## 监控埋点（TTFT/P95/usage）
+---
 
-新增能力：
+### Script 4：5 分钟性能与稳定性（缓存 + 指标 + 压测）
 
-- API 内置埋点：`response_time_ms`、`ttft_ms`、`prompt_tokens`、`completion_tokens`、`success_rate`。
-- 暴露 `GET /metrics`（Prometheus 文本格式）。
-- 同步写入请求级 CSV：`reports/metrics_events.csv`。
-- 每周报告脚本（含 P50/P95/P99）：
+**目标**：体现工程化深度。
 
 ```bash
-python scripts/weekly_metrics_report.py   --input reports/metrics_events.csv   --output reports/weekly_metrics_report.csv
+# 同 session 两次请求，观察 cache hit/miss
+
+# 看 Prometheus 指标
+curl http://127.0.0.1:8000/metrics
+
+# 生成周报（P50/P95/P99、成功率、token）
+python scripts/weekly_metrics_report.py \
+  --input reports/metrics_events.csv \
+  --output reports/weekly_metrics_report.csv
 ```
 
-周报字段：
-`week_start, request_count, success_rate, cache_hit_rate, latency_p50_ms, latency_p95_ms, latency_p99_ms, latency_cache_hit_p95_ms, latency_cache_miss_p95_ms, avg_ttft_ms, prompt_tokens_total, completion_tokens_total`。
+**强调**：
 
-## 指标可视化（Prometheus + Grafana 基础）
+- 能从“功能可用”走到“可观测、可优化、可运维”。
+- 可以量化优化效果（TTFT / P95 / cache hit rate）。
 
-本地启动（包含 API + Redis + Prometheus + Grafana）：
+---
 
-```bash
-docker compose up --build
-```
+### Script 5：7 分钟 Agent 可解释性演示（Trace + 可视化）
 
-访问入口：
-
-- Prometheus：`http://127.0.0.1:9090`
-- Grafana：`http://127.0.0.1:3000`（账号/密码：`admin` / `admin`）
-- 预置看板：`Agentic RAG Metrics`
-
-看板面板包含：
-
-- `TTFT P95 (ms)`
-- `Overall P95 Latency (ms)`
-- `Cache Hit Rate`
-- `P95 Latency: Cache Hit vs Miss`（可直接对比命中/未命中）
-
-快速制造 cache hit / miss 对比（同一个 session 连续请求）：
+**目标**：展示 Agent 工具调用链路，不再是黑盒。
 
 ```bash
-# miss（首次）
-curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello","session_id":"viz-s1"}'
-
-# hit（同 session 再发）
-curl -X POST http://127.0.0.1:8000/chat -H 'Content-Type: application/json' -d '{"message":"hello again","session_id":"viz-s1"}'
-```
-
-## RAG 质量评估（测试集 + baseline）
-
-```bash
-python -m app.retrieval.evaluate_rag_quality
-```
-
-输出：
-
-- `reports/rag_eval_report.json`
-- `reports/rag_eval_report.md`
-
-指标：
-
-- `retrieval_precision`（Hit@k）
-- `answer_accuracy`（token-F1 阈值）
-- `bm25_retrieval_precision`（baseline 对比）
-
-## RAG 服务化（/rag/query）
-
-```bash
-curl -X POST http://127.0.0.1:8000/rag/query \
+# 生成一次 agent trace
+curl -X POST http://127.0.0.1:8000/agent/trace \
   -H 'Content-Type: application/json' \
-  -d '{"query":"What is FAISS?", "session_id":"rag-s1", "k":5, "rewrite_query": true}'
+  -d '{"question":"请先查 users 资料，再告诉我 Alice 所在城市天气，并计算 7 * 3 + 2，最后整理成结论。"}'
 ```
 
-返回包含：
+拿到 `trace_id` 后：
 
-- `answer`（LLM 输出）
-- `retrieval.items`（检索结果含 rerank_score）
-- `retrieval.doc_ids` + `retrieval.rerank_scores`
+```bash
+# 读取结构化图
+curl http://127.0.0.1:8000/agent/trace/<trace_id>
 
-日志：
+# 浏览器打开可视化页面
+# http://127.0.0.1:8000/agent/trace/<trace_id>/view
+```
 
-- 记录 `query_rag_trace`，包含 `session_id / rewritten_query / doc_ids / rerank_scores`。
+**强调**：
 
-## LangChain 基础（Chain / Tools）
+- Trace 可用于排障、回放、分析工具质量。
+- 这比单纯“给答案”更接近真实生产要求。
 
-新增工程化示例模块（LangChain + LangGraph 新生态）：
+---
 
-- `app/langchain_tools/calculator.py`：安全算术计算器（基于 AST，禁用 `eval`）。
-- `app/langchain_tools/registry.py`：Calculator Tool 注册（`langchain-core` / `StructuredTool`）。
-- `app/langchain_tools/agent.py`：Agent 装配（`langgraph.prebuilt.create_react_agent`）。
-- `tests/test_langchain_calculator_tool.py`：验证 Tool 调用与 Agent 调用链路。
+## 6. 项目结构
 
-## 定义更多工具（HTTP API / SQL / Scraper）
+```text
+app/
+  main.py                     # API 路由、异常处理、middleware、指标埋点
+  llm_client.py               # LLM 调用封装（真实/Mock）
+  memory/chat_store.py        # Redis 会话记忆
+  retrieval/                  # 索引构建、检索、评估
+  optimization/               # 缓存、限流
+  langchain_tools/            # 工具注册、Agent、执行图
+scripts/                      # 压测与报表脚本
+monitoring/                   # Prometheus + Grafana 配置
+tests/                        # pytest 测试集
+```
 
-新增工具：
+---
 
-- `WeatherAPI`：mock 天气 API wrapper（`app/langchain_tools/weather.py`）。
-- `UserDBQuery`：本地 sqlite 查询工具（`app/langchain_tools/db.py`，仅允许 `SELECT`）。
-- `build_agent`：组合 `Calculator + WeatherAPI + UserDBQuery`，支持对话中多工具调用与结果整合。
+## 7. 问答
 
-## Planner / Executor 架构实现
+**Q1：为什么要做 Agentic RAG，而不是纯 RAG？**  
+A：纯 RAG 主要解决“检索+生成”，Agentic RAG 进一步解决“多工具规划与执行”，并且能追踪执行路径，利于可解释与排障。
 
-新增模块：`app/langchain_tools/planner_executor.py`
+**Q2：怎么保证线上稳定性？**  
+A：统一错误处理、会话限流、缓存分层、请求级 metrics、Prometheus + Grafana、周期性周报。
 
-流程：
+**Q3：如何证明优化有效？**  
+A：用 TTFT/P95/命中率做量化指标，对比优化前后；报告文件可留痕。
 
-1. Planner：把复杂问题切分为可执行 steps（查资料 / 天气 / 计算 / 总结）。
-2. Executor：按 step 调用工具（`UserDBQuery` / `WeatherAPI` / `Calculator`）。
-3. Collect：收集 observations。
-4. Summary Step（LLM）：把计划与工具结果整合成最终回答。
+---
 
-对应测试：`tests/test_planner_executor.py`，覆盖 3 个复合问题场景。
+## 8. License
 
-## LangGraph 可视化与流转跟踪
-
-新增能力：
-
-- `app/langchain_tools/graph_trace.py`：
-    - execution result → graph JSON
-    - graph JSON → Mermaid 文本
-    - 保存/加载 trace 文件
-    - 生成可直接浏览器打开的 Mermaid HTML
-- `POST /agent/trace`：执行 planner/executor agent，并保存 trace JSON。
-- `GET /agent/trace/{trace_id}`：读取 trace JSON。
-- `GET /agent/trace/{trace_id}/view`：浏览器可视化执行流图（Mermaid）。
-
-## 成本优化（semantic cache + rate limit）
-
-`/rag/query` 新增：
-
-- Semantic cache：`query -> embedding` 相似度命中（默认阈值 `0.85`）直接返回缓存结果，减少 LLM 调用。
-- Per-session rate limiter：默认每会话每分钟最多 20 次。
-
-可调环境变量：
-
-- `SEMANTIC_CACHE_THRESHOLD`（默认 `0.85`）
-- `RAG_RATE_LIMIT_PER_MINUTE`（默认 `20`）
-- `RAG_RATE_LIMIT_WINDOW_SECONDS`（默认 `60`）
-
-响应中包含：
-
-- `cache.hit`、`cache.similarity`、`cache.hit_rate`
-
-日志 trace 中包含：
-
-- `query_rag_trace ... cache_hit ... doc_ids ... rerank_scores ... hit_rate`
-
+[MIT](LICENSE)
