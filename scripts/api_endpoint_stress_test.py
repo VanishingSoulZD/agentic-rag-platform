@@ -239,6 +239,8 @@ async def run_chat_load(
 def write_report(result: dict[str, Any], out_path: Path) -> None:
     checks: list[dict[str, Any]] = result["endpoint_checks"]
     load = result["load_test"]
+    p95_threshold_ms = float(result.get("summary", {}).get("p95_threshold_ms", 1500.0))
+    p95_pass = float(load.get("p95_ms", 0.0)) <= p95_threshold_ms
 
     lines = [
         "# Performance Report (Real API)",
@@ -271,7 +273,8 @@ def write_report(result: dict[str, Any], out_path: Path) -> None:
             "",
             "## 3) Acceptance",
             f"- Error rate < 2%: **{load['error_rate'] < 0.02}**",
-            f"- P95 <= threshold: **{load['accepted']}**",
+            f"- P95 <= threshold ({p95_threshold_ms}ms): **{p95_pass}**",
+            f"- Overall pass (error + p95): **{load['accepted']}**",
             "",
             "## 4) Notes",
             "- This report uses real HTTP calls to running FastAPI endpoints.",
@@ -325,6 +328,7 @@ async def main_async(args: argparse.Namespace) -> None:
     out_json = ROOT / args.out_json
     out_md = ROOT / args.out_md
     out_json.parent.mkdir(parents=True, exist_ok=True)
+    out_md.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     write_report(result, out_md)
 

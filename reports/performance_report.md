@@ -29,7 +29,8 @@
 
 ## 3) Acceptance
 - Error rate < 2%: **True**
-- P95 <= threshold: **True**
+- P95 <= threshold (1500.0ms): **True**
+- Overall pass (error + p95): **True**
 
 ## 4) Notes
 - This report uses real HTTP calls to running FastAPI endpoints.
