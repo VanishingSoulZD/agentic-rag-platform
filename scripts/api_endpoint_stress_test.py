@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""真实 API 验证 + 100 并发压测（Day21 + Day29）。"""
+"""真实 API 验证 + 100 并发压测"""
 
 from __future__ import annotations
 
@@ -159,13 +159,13 @@ async def check_agent_trace_chain(session: aiohttp.ClientSession, base_url: str)
 
 
 async def run_chat_load(
-    session: aiohttp.ClientSession,
-    base_url: str,
-    concurrency: int,
-    total_requests: int,
-    p95_threshold_ms: float,
-    in_price_per_m: float,
-    out_price_per_m: float,
+        session: aiohttp.ClientSession,
+        base_url: str,
+        concurrency: int,
+        total_requests: int,
+        p95_threshold_ms: float,
+        in_price_per_m: float,
+        out_price_per_m: float,
 ) -> LoadMetrics:
     latencies_ms: list[float] = []
     prompt_tokens_total = 0
@@ -280,7 +280,6 @@ def write_report(result: dict[str, Any], out_path: Path) -> None:
             "- This report uses real HTTP calls to running FastAPI endpoints.",
             "- LLM may run in mock mode if OPENAI_API_KEY is not configured.",
             "- CPU/GPU metrics are not exposed by current API; add node/GPU telemetry for full observability.",
-            "- Scope: Day21/Day29 acceptance now uses real API artifacts only (simulation artifacts removed).",
         ]
     )
 
@@ -318,10 +317,8 @@ async def main_async(args: argparse.Namespace) -> None:
         "load_test": asdict(load),
         "summary": {
             "all_endpoint_ok": all(c.ok for c in checks),
-            "day21_day29_pass": load.accepted,
+            "pass": load.accepted,
             "p95_threshold_ms": args.p95_threshold_ms,
-            "artifact_scope": "real_api_only",
-            "deprecated_simulation_artifacts_removed": True,
         },
     }
 

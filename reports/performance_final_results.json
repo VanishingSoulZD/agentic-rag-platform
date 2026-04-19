@@ -1,6 +1,6 @@
 {
   "base_url": "http://127.0.0.1:8000",
-  "timestamp_utc": "2026-04-19 03:13:36",
+  "timestamp_utc": "2026-04-19 04:57:28",
   "endpoint_checks": [
     {
       "endpoint": "/ping",
@@ -14,17 +14,17 @@
       "method": "POST",
       "status_code": 200,
       "ok": true,
-      "note": "trace_id=28241502436f"
+      "note": "trace_id=2fe7e21992c0"
     },
     {
-      "endpoint": "/agent/trace/28241502436f",
+      "endpoint": "/agent/trace/2fe7e21992c0",
       "method": "GET",
       "status_code": 200,
       "ok": true,
       "note": "keys=['meta', 'nodes', 'edges', 'observations']"
     },
     {
-      "endpoint": "/agent/trace/28241502436f/view",
+      "endpoint": "/agent/trace/2fe7e21992c0/view",
       "method": "GET",
       "status_code": 200,
       "ok": true,
@@ -47,9 +47,9 @@
     {
       "endpoint": "/rag/query",
       "method": "POST",
-      "status_code": 500,
-      "ok": false,
-      "note": "error=internal_server_error code=500"
+      "status_code": 200,
+      "ok": true,
+      "note": "doc_ids=3"
     }
   ],
   "load_test": {
@@ -59,21 +59,19 @@
     "success": 1000,
     "errors": 0,
     "error_rate": 0.0,
-    "p50_ms": 242.94,
-    "p95_ms": 494.81,
-    "p99_ms": 497.59,
-    "qps": 341.5,
-    "wall_time_s": 2.928,
+    "p50_ms": 207.67,
+    "p95_ms": 378.12,
+    "p99_ms": 1138.88,
+    "qps": 416.81,
+    "wall_time_s": 2.399,
     "accepted": true,
-    "total_prompt_tokens": 6968,
-    "total_completion_tokens": 7700,
-    "estimated_cost_usd": 0.005665
+    "total_prompt_tokens": 15096,
+    "total_completion_tokens": 7688,
+    "estimated_cost_usd": 0.006877
   },
   "summary": {
-    "all_endpoint_ok": false,
-    "day21_day29_pass": true,
-    "p95_threshold_ms": 1500.0,
-    "artifact_scope": "real_api_only",
-    "deprecated_simulation_artifacts_removed": true
+    "all_endpoint_ok": true,
+    "pass": true,
+    "p95_threshold_ms": 1500.0
   }
 }
