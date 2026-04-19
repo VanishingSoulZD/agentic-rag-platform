@@ -1,0 +1,79 @@
+{
+  "base_url": "http://127.0.0.1:8000",
+  "timestamp_utc": "2026-04-19 03:13:36",
+  "endpoint_checks": [
+    {
+      "endpoint": "/ping",
+      "method": "GET",
+      "status_code": 200,
+      "ok": true,
+      "note": "body={'status': 'ok'}"
+    },
+    {
+      "endpoint": "/agent/trace",
+      "method": "POST",
+      "status_code": 200,
+      "ok": true,
+      "note": "trace_id=28241502436f"
+    },
+    {
+      "endpoint": "/agent/trace/28241502436f",
+      "method": "GET",
+      "status_code": 200,
+      "ok": true,
+      "note": "keys=['meta', 'nodes', 'edges', 'observations']"
+    },
+    {
+      "endpoint": "/agent/trace/28241502436f/view",
+      "method": "GET",
+      "status_code": 200,
+      "ok": true,
+      "note": "html_len=2495"
+    },
+    {
+      "endpoint": "/chat",
+      "method": "POST",
+      "status_code": 200,
+      "ok": true,
+      "note": "keys=['answer', 'session_id', 'history', 'use', 'cache', 'cache_layers']"
+    },
+    {
+      "endpoint": "/chat/stream",
+      "method": "POST",
+      "status_code": 200,
+      "ok": true,
+      "note": "token=True,usage=True,done=True"
+    },
+    {
+      "endpoint": "/rag/query",
+      "method": "POST",
+      "status_code": 500,
+      "ok": false,
+      "note": "error=internal_server_error code=500"
+    }
+  ],
+  "load_test": {
+    "endpoint": "/chat",
+    "concurrency": 100,
+    "total_requests": 1000,
+    "success": 1000,
+    "errors": 0,
+    "error_rate": 0.0,
+    "p50_ms": 242.94,
+    "p95_ms": 494.81,
+    "p99_ms": 497.59,
+    "qps": 341.5,
+    "wall_time_s": 2.928,
+    "accepted": true,
+    "total_prompt_tokens": 6968,
+    "total_completion_tokens": 7700,
+    "estimated_cost_usd": 0.005665
+  },
+  "summary": {
+    "all_endpoint_ok": false,
+    "day21_day29_pass": true,
+    "p95_threshold_ms": 1500.0,
+    "artifact_scope": "real_api_only",
+    "deprecated_simulation_artifacts_removed": true
+  }
+}
