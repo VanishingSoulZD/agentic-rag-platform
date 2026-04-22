@@ -48,7 +48,7 @@ jobs:
           }')
 
           # 使用最新的模型引用方式
-          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-latest:generateContent?key=${GEMINI_API_KEY}" \
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
               -d "$PAYLOAD")
 
