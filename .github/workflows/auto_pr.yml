@@ -1,0 +1,54 @@
+name: Cursor PR Specialist
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  cursor-job:
+    runs-on: ubuntu-latest
+    # 只要标题包含 cursor 或者是 cur- 开头的分支就运行
+    if: contains(github.event.pull_request.title, 'cursor') || startsWith(github.head_ref, 'cursor')
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 第一步：物理打标签 (使用你创建的名为 cursor 的标签)
+      - name: Add Physical Label
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['cursor']  # 这里填入你在 GitHub 创建的标签名
+            })
+
+      # 第二步：调用 AI 生成详细描述
+      - name: Generate AI Description
+        id: ai_gen
+        uses: mshick/google-gemini-summary-action@v1
+        with:
+          model: 'gemini-pro'
+          api-key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
+            请根据以下代码差异（Diff），生成一个详细且专业的 Pull Request 描述。
+            要求使用简体中文，包含以下模块：
+            1. **改动概要**：一句话总结。
+            2. **主要变化**：列出核心逻辑的调整。
+            3. **影响范围**：是否有破坏性更改。
+            4. **来源标记**：在末尾保留 #CursorGenerated。
+
+      # 第三步：将 AI 生成的描述填充到 PR 面板
+      - name: Update PR Body
+        uses: taminotam/pull-request-column-update-action@v2
+        with:
+          pull_request_number: ${{ github.event.pull_request.number }}
+          body: ${{ steps.ai_gen.outputs.summary }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
