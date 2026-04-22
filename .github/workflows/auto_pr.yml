@@ -17,9 +17,8 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2 # 获取最近两次提交以对比差异
+          fetch-depth: 2
 
-      # 1. 物理打标签
       - name: Add Physical Label
         uses: actions/github-script@v7
         with:
@@ -31,44 +30,58 @@ jobs:
               labels: ['cursor'] 
             })
 
-      # 2. 获取代码差异 (Diff) 并调用 Gemini 生成描述
       - name: Generate Summary via Gemini
         id: gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # 获取 Diff 内容并限制大小防止超过 API 限制
+          # 1. 安全地获取并转义 Diff
           git diff HEAD^ HEAD > diff.txt
-          DIFF_CONTENT=$(cat diff.txt | head -c 5000) 
+          # 使用 jq 将文件内容转义为安全的 JSON 字符串内容
+          DIFF_JSON=$(jq -Rs . < diff.txt)
 
-          # 使用 curl 直接调用 Gemini API
-          RESPONSE=$(curl https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY} \
+          # 2. 构造完整的 JSON Payload
+          # 注意：这里直接用 jq 构造，避免 shell 拼接字符串导致的引号冲突
+          PAYLOAD=$(jq -n --arg diff "$DIFF_JSON" '{
+            contents: [{
+              parts: [{
+                text: ("你是一个资深工程师。请根据以下代码差异生成一个中文 PR 描述。包含：1.改动概要 2.主要变化 3.来源标记（加上 #CursorGenerated）。代码差异如下：\n" + $diff)
+              }]
+            }]
+          }')
+
+          # 3. 调用 API 并捕获完整响应
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
-              -X POST \
-              -d '{
-                "contents": [{
-                  "parts":[{
-                    "text": "你是一个资深工程师。请根据以下代码差异生成一个中文 PR 描述。包含：1.改动概要 2.主要变化 3.来源标记（加上 #CursorGenerated）。代码差异如下：\n'"${DIFF_CONTENT}"'"
-                  }]
-                }]
-              }')
-          
-          # 提取 AI 返回的文本并存入环境变量
-          SUMMARY=$(echo $RESPONSE | jq -r '.candidates[0].content.parts[0].text')
-          
-          # 将结果传递给下一步，处理换行符问题
-          echo "SUMMARY<<EOF" >> $GITHUB_ENV
-          echo "$SUMMARY" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+              -d "$PAYLOAD")
 
-      # 3. 更新 PR 描述
+          # 调试：打印响应（如果出错可以去日志看原因）
+          echo "API Response: $RESPONSE"
+
+          # 4. 解析结果
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "AI 未能生成描述，请检查日志"')
+          
+          if [ "$SUMMARY" == "null" ] || [ -z "$SUMMARY" ]; then
+            SUMMARY="AI 响应异常，请检查 GitHub Actions 日志中的 API Response。"
+          fi
+
+          # 5. 写入环境变量
+          {
+            echo "SUMMARY<<EOF"
+            echo "$SUMMARY"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Update PR Body
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.pulls.update({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              body: process.env.SUMMARY
-            })
+            const body = process.env.SUMMARY;
+            if (body) {
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                body: body
+              });
+            }
