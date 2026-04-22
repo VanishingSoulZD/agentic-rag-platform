@@ -42,8 +42,8 @@ chat_store = HybridChatStore(
     )
 )
 llm_client = AsyncLLMClient(
-    timeout_seconds=float(os.getenv('OPENAI_TIMEOUT_SECONDS', '20')),
-    max_retries=int(os.getenv('OPENAI_MAX_RETRIES', '2')),
+    timeout_seconds=float(os.getenv('LLM_TIMEOUT_SECONDS', os.getenv('OPENAI_TIMEOUT_SECONDS', '20'))),
+    max_retries=int(os.getenv('LLM_MAX_RETRIES', os.getenv('OPENAI_MAX_RETRIES', '2'))),
 )
 cache_manager = CacheManager()
 session_rate_limiter = SessionRateLimiter(
