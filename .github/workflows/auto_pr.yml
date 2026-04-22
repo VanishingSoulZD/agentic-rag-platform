@@ -27,7 +27,7 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: ['cursor'] 
+              labels: ['cursor']
             })
 
       - name: Generate Summary via Gemini
@@ -35,13 +35,10 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # 1. 安全地获取并转义 Diff
           git diff HEAD^ HEAD > diff.txt
-          # 使用 jq 将文件内容转义为安全的 JSON 字符串内容
           DIFF_JSON=$(jq -Rs . < diff.txt)
-
-          # 2. 构造完整的 JSON Payload
-          # 注意：这里直接用 jq 构造，避免 shell 拼接字符串导致的引号冲突
+          
+          # 使用 jq 构造 Payload，彻底避免引号逃逸
           PAYLOAD=$(jq -n --arg diff "$DIFF_JSON" '{
             contents: [{
               parts: [{
@@ -50,38 +47,34 @@ jobs:
             }]
           }')
 
-          # 3. 调用 API 并捕获完整响应
-          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+          # 使用最新的模型引用方式
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
               -d "$PAYLOAD")
 
-          # 调试：打印响应（如果出错可以去日志看原因）
           echo "API Response: $RESPONSE"
 
-          # 4. 解析结果
-          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "AI 未能生成描述，请检查日志"')
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty')
           
-          if [ "$SUMMARY" == "null" ] || [ -z "$SUMMARY" ]; then
-            SUMMARY="AI 响应异常，请检查 GitHub Actions 日志中的 API Response。"
+          if [ -z "$SUMMARY" ]; then
+            ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // "Unknown Error"')
+            SUMMARY="AI 生成失败。原因：$ERROR_MSG"
           fi
 
-          # 5. 写入环境变量
-          {
-            echo "SUMMARY<<EOF"
-            echo "$SUMMARY"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
+          echo "SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "$SUMMARY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Update PR Body
         uses: actions/github-script@v7
+        env:
+          SUMMARY: ${{ env.SUMMARY }}
         with:
           script: |
             const body = process.env.SUMMARY;
-            if (body) {
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                body: body
-              });
-            }
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: body
+            });
