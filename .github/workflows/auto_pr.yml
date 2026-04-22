@@ -1,47 +1,14 @@
-name: Cursor PR Specialist
-
-on:
-  pull_request:
-    types: [opened, synchronize]
-
-permissions:
-  pull-requests: write
-  contents: read
-
-jobs:
-  cursor-job:
-    runs-on: ubuntu-latest
-    if: contains(github.event.pull_request.title, 'cursor') || startsWith(github.head_ref, 'cursor')
-    
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-
-      - name: Add Physical Label
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.issues.addLabels({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              labels: ['cursor'] 
-            })
-
-      - name: Generate Summary via Gemini
+- name: Generate Summary via Gemini
         id: gemini
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: |
-          # 1. 安全地获取并转义 Diff
+          # 1. 获取并转义 Diff
           git diff HEAD^ HEAD > diff.txt
-          # 使用 jq 将文件内容转义为安全的 JSON 字符串内容
           DIFF_JSON=$(jq -Rs . < diff.txt)
 
-          # 2. 构造完整的 JSON Payload
-          # 注意：这里直接用 jq 构造，避免 shell 拼接字符串导致的引号冲突
+          # 2. 构造 JSON Payload
+          # 修正：确保模型名称正确
           PAYLOAD=$(jq -n --arg diff "$DIFF_JSON" '{
             contents: [{
               parts: [{
@@ -50,19 +17,19 @@ jobs:
             }]
           }')
 
-          # 3. 调用 API 并捕获完整响应
-          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}" \
+          # 3. 调用 API (修正了模型名称为 gemini-1.5-flash-latest)
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}" \
               -H 'Content-Type: application/json' \
               -d "$PAYLOAD")
 
-          # 调试：打印响应（如果出错可以去日志看原因）
           echo "API Response: $RESPONSE"
 
-          # 4. 解析结果
-          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // "AI 未能生成描述，请检查日志"')
+          # 4. 解析结果 (增加了对错误信息的防御)
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty')
           
-          if [ "$SUMMARY" == "null" ] || [ -z "$SUMMARY" ]; then
-            SUMMARY="AI 响应异常，请检查 GitHub Actions 日志中的 API Response。"
+          if [ -z "$SUMMARY" ]; then
+            ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // "Unknown Error"')
+            SUMMARY="AI 生成失败。原因：$ERROR_MSG"
           fi
 
           # 5. 写入环境变量
@@ -71,17 +38,3 @@ jobs:
             echo "$SUMMARY"
             echo "EOF"
           } >> "$GITHUB_ENV"
-
-      - name: Update PR Body
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const body = process.env.SUMMARY;
-            if (body) {
-              await github.rest.pulls.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.issue.number,
-                body: body
-              });
-            }
