@@ -1,0 +1,80 @@
+name: Cursor PR Specialist
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  cursor-job:
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.title, 'cursor') || startsWith(github.head_ref, 'cursor')
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Add Physical Label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.addLabels({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['cursor']
+            })
+
+      - name: Generate Summary via Gemini
+        id: gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          git diff HEAD^ HEAD > diff.txt
+          DIFF_JSON=$(jq -Rs . < diff.txt)
+          
+          # 使用 jq 构造 Payload，彻底避免引号逃逸
+          PAYLOAD=$(jq -n --arg diff "$DIFF_JSON" '{
+            contents: [{
+              parts: [{
+                text: ("你是一个资深工程师。请根据以下代码差异生成一个中文 PR 描述。包含：1.改动概要 2.主要变化 3.来源标记（加上 #CursorGenerated）。代码差异如下：\n" + $diff)
+              }]
+            }]
+          }')
+
+          # 使用最新的模型引用方式
+          RESPONSE=$(curl -s -X POST "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${GEMINI_API_KEY}" \
+              -H 'Content-Type: application/json' \
+              -d "$PAYLOAD")
+
+          echo "API Response: $RESPONSE"
+
+          SUMMARY=$(echo "$RESPONSE" | jq -r '.candidates[0].content.parts[0].text // empty')
+          
+          if [ -z "$SUMMARY" ]; then
+            ERROR_MSG=$(echo "$RESPONSE" | jq -r '.error.message // "Unknown Error"')
+            SUMMARY="AI 生成失败。原因：$ERROR_MSG"
+          fi
+
+          echo "SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "$SUMMARY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Update PR Body
+        uses: actions/github-script@v7
+        env:
+          SUMMARY: ${{ env.SUMMARY }}
+        with:
+          script: |
+            const body = process.env.SUMMARY;
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: body
+            });
