@@ -11,44 +11,64 @@ permissions:
 jobs:
   cursor-job:
     runs-on: ubuntu-latest
-    # 只要标题包含 cursor 或者是 cur- 开头的分支就运行
     if: contains(github.event.pull_request.title, 'cursor') || startsWith(github.head_ref, 'cursor')
     
     steps:
-      - name: Checkout
+      - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # 获取最近两次提交以对比差异
 
-      # 第一步：物理打标签 (使用你创建的名为 cursor 的标签)
+      # 1. 物理打标签
       - name: Add Physical Label
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.issues.addLabels({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              labels: ['cursor']  # 这里填入你在 GitHub 创建的标签名
+              labels: ['cursor'] 
             })
 
-      # 第二步：调用 AI 生成详细描述
-      - name: Generate AI Description
-        id: ai_gen
-        uses: mshick/google-gemini-summary-action@v1
-        with:
-          model: 'gemini-pro'
-          api-key: ${{ secrets.GEMINI_API_KEY }}
-          prompt: |
-            请根据以下代码差异（Diff），生成一个详细且专业的 Pull Request 描述。
-            要求使用简体中文，包含以下模块：
-            1. **改动概要**：一句话总结。
-            2. **主要变化**：列出核心逻辑的调整。
-            3. **影响范围**：是否有破坏性更改。
-            4. **来源标记**：在末尾保留 #CursorGenerated。
+      # 2. 获取代码差异 (Diff) 并调用 Gemini 生成描述
+      - name: Generate Summary via Gemini
+        id: gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # 获取 Diff 内容并限制大小防止超过 API 限制
+          git diff HEAD^ HEAD > diff.txt
+          DIFF_CONTENT=$(cat diff.txt | head -c 5000) 
 
-      # 第三步：将 AI 生成的描述填充到 PR 面板
+          # 使用 curl 直接调用 Gemini API
+          RESPONSE=$(curl https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY} \
+              -H 'Content-Type: application/json' \
+              -X POST \
+              -d '{
+                "contents": [{
+                  "parts":[{
+                    "text": "你是一个资深工程师。请根据以下代码差异生成一个中文 PR 描述。包含：1.改动概要 2.主要变化 3.来源标记（加上 #CursorGenerated）。代码差异如下：\n'"${DIFF_CONTENT}"'"
+                  }]
+                }]
+              }')
+          
+          # 提取 AI 返回的文本并存入环境变量
+          SUMMARY=$(echo $RESPONSE | jq -r '.candidates[0].content.parts[0].text')
+          
+          # 将结果传递给下一步，处理换行符问题
+          echo "SUMMARY<<EOF" >> $GITHUB_ENV
+          echo "$SUMMARY" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      # 3. 更新 PR 描述
       - name: Update PR Body
-        uses: taminotam/pull-request-column-update-action@v2
+        uses: actions/github-script@v7
         with:
-          pull_request_number: ${{ github.event.pull_request.number }}
-          body: ${{ steps.ai_gen.outputs.summary }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              body: process.env.SUMMARY
+            })
