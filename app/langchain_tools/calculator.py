@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import ast
 import operator
-from typing import Union
 
-Number = Union[int, float]
+Number = int | float
 
 _ALLOWED_BINARY_OPERATORS = {
     ast.Add: operator.add,
@@ -44,7 +43,7 @@ def calculate_expression(expression: str) -> str:
 
 
 def _evaluate_ast(node: ast.AST) -> Number:
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+    if isinstance(node, ast.Constant) and isinstance(node.value, int | float):
         return node.value
 
     if isinstance(node, ast.BinOp):

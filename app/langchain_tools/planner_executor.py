@@ -28,15 +28,17 @@ class PlannerExecutorAgent:
     """Planner -> Executor -> Summary (LLM) workflow."""
 
     def __init__(
-            self,
-            db_path: Path = DEFAULT_DB_PATH,
-            llm_client: AsyncLLMClient | None = None,
-            tool_policy: ToolUsePolicy | None = None,
-            tool_cache: ToolCache | None = None,
+        self,
+        db_path: Path = DEFAULT_DB_PATH,
+        llm_client: AsyncLLMClient | None = None,
+        tool_policy: ToolUsePolicy | None = None,
+        tool_cache: ToolCache | None = None,
     ):
         self.db_path = db_path
         self.llm_client = llm_client or AsyncLLMClient()
-        self.tool_policy = tool_policy or ToolUsePolicy(denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"})
+        self.tool_policy = tool_policy or ToolUsePolicy(
+            denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"}
+        )
         self.tool_cache = tool_cache
 
     def planner(self, question: str) -> list[PlanStep]:
@@ -45,7 +47,19 @@ class PlannerExecutorAgent:
         steps: list[PlanStep] = []
         next_id = 1
 
-        if any(name in q for name in ["alice", "bob", "carol", "用户", "users", "资料", "database", "db"]):
+        if any(
+            name in q
+            for name in [
+                "alice",
+                "bob",
+                "carol",
+                "用户",
+                "users",
+                "资料",
+                "database",
+                "db",
+            ]
+        ):
             steps.append(
                 PlanStep(
                     step_id=next_id,
@@ -102,7 +116,9 @@ class PlannerExecutorAgent:
             if step.kind != "tool":
                 continue
 
-            result, strategy = self._call_tool(step.tool_name or "", step.tool_input or "")
+            result, strategy = self._call_tool(
+                step.tool_name or "", step.tool_input or ""
+            )
             if strategy in {"exact", "semantic"}:
                 cache_layers["tool"] = strategy
             observations.append(
@@ -114,7 +130,9 @@ class PlannerExecutorAgent:
                 }
             )
 
-        summary = await self._summary_step(question=sanitized_question, steps=steps, observations=observations)
+        summary = await self._summary_step(
+            question=sanitized_question, steps=steps, observations=observations
+        )
         return {
             "question": sanitized_question,
             "plan": [step.__dict__ for step in steps],
@@ -144,7 +162,9 @@ class PlannerExecutorAgent:
             self.tool_cache.store(tool_name, tool_input, result)
         return result, "miss"
 
-    async def _summary_step(self, question: str, steps: list[PlanStep], observations: list[dict[str, Any]]) -> str:
+    async def _summary_step(
+        self, question: str, steps: list[PlanStep], observations: list[dict[str, Any]]
+    ) -> str:
         summary_payload = {
             "question": question,
             "steps": [step.__dict__ for step in steps],
@@ -190,8 +210,11 @@ class PlannerExecutorAgent:
         import re
 
         explicit = re.findall(r"[0-9\s\+\-\*\/\(\)\.]+", question)
-        candidates = [item.strip() for item in explicit if
-                      any(ch.isdigit() for ch in item) and any(op in item for op in "+-*/")]
+        candidates = [
+            item.strip()
+            for item in explicit
+            if any(ch.isdigit() for ch in item) and any(op in item for op in "+-*/")
+        ]
         if candidates:
             return candidates[0]
 

@@ -42,7 +42,9 @@ class EmbeddingProvider:
             try:
                 if self._model is None:
                     self._model = SentenceTransformer(self.model_name)
-                vec = self._model.encode([text], convert_to_numpy=True, normalize_embeddings=True)[0]
+                vec = self._model.encode(
+                    [text], convert_to_numpy=True, normalize_embeddings=True
+                )[0]
                 return vec.astype(np.float32)
             except Exception:
                 self._model_failed = True
@@ -75,7 +77,12 @@ class EmbeddingCache:
 
 
 class ResponseCache:
-    def __init__(self, embedding_cache: EmbeddingCache, sim_threshold: float = 0.85, max_entries: int = 500):
+    def __init__(
+        self,
+        embedding_cache: EmbeddingCache,
+        sim_threshold: float = 0.85,
+        max_entries: int = 500,
+    ):
         self.embedding_cache = embedding_cache
         self.sim_threshold = sim_threshold
         self.max_entries = max_entries
@@ -112,7 +119,9 @@ class ResponseCache:
         exact_key = normalize_text(query)
         self.exact[exact_key] = payload
         vec, _ = self.embedding_cache.get(query)
-        self.semantic_entries.append(SemanticEntry(key=exact_key, vector=vec, payload=payload))
+        self.semantic_entries.append(
+            SemanticEntry(key=exact_key, vector=vec, payload=payload)
+        )
         while len(self.semantic_entries) > self.max_entries:
             evicted = self.semantic_entries.pop(0)
             if not any(entry.key == evicted.key for entry in self.semantic_entries):
@@ -120,7 +129,12 @@ class ResponseCache:
 
 
 class RetrievalCache:
-    def __init__(self, embedding_cache: EmbeddingCache, sim_threshold: float = 0.9, max_entries: int = 500):
+    def __init__(
+        self,
+        embedding_cache: EmbeddingCache,
+        sim_threshold: float = 0.9,
+        max_entries: int = 500,
+    ):
         self.embedding_cache = embedding_cache
         self.sim_threshold = sim_threshold
         self.max_entries = max_entries
@@ -148,13 +162,20 @@ class RetrievalCache:
 
     def store(self, query: str, payload: dict[str, Any]) -> None:
         vec, _ = self.embedding_cache.get(query)
-        self.entries.append(SemanticEntry(key=normalize_text(query), vector=vec, payload=payload))
+        self.entries.append(
+            SemanticEntry(key=normalize_text(query), vector=vec, payload=payload)
+        )
         if len(self.entries) > self.max_entries:
-            self.entries = self.entries[-self.max_entries:]
+            self.entries = self.entries[-self.max_entries :]
 
 
 class ToolCache:
-    def __init__(self, embedding_cache: EmbeddingCache, sim_threshold: float = 0.92, max_entries: int = 500):
+    def __init__(
+        self,
+        embedding_cache: EmbeddingCache,
+        sim_threshold: float = 0.92,
+        max_entries: int = 500,
+    ):
         self.embedding_cache = embedding_cache
         self.sim_threshold = sim_threshold
         self.max_entries = max_entries

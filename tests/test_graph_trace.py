@@ -5,7 +5,11 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.langchain_tools.graph_trace import build_execution_graph, build_mermaid_html, save_execution_graph
+from app.langchain_tools.graph_trace import (
+    build_execution_graph,
+    build_mermaid_html,
+    save_execution_graph,
+)
 from app.main import app
 
 
@@ -13,8 +17,18 @@ def test_build_and_save_graph(tmp_path: Path) -> None:
     execution_result = {
         "question": "查资料+计算+整理",
         "plan": [
-            {"step_id": 1, "kind": "tool", "instruction": "query db", "tool_name": "UserDBQuery"},
-            {"step_id": 2, "kind": "tool", "instruction": "calculate", "tool_name": "Calculator"},
+            {
+                "step_id": 1,
+                "kind": "tool",
+                "instruction": "query db",
+                "tool_name": "UserDBQuery",
+            },
+            {
+                "step_id": 2,
+                "kind": "tool",
+                "instruction": "calculate",
+                "tool_name": "Calculator",
+            },
             {"step_id": 3, "kind": "summary", "instruction": "summarize"},
         ],
         "observations": [{"tool": "Calculator", "output": "12"}],
@@ -22,7 +36,9 @@ def test_build_and_save_graph(tmp_path: Path) -> None:
     }
 
     graph = build_execution_graph(execution_result)
-    trace_id, output_path = save_execution_graph(graph, output_dir=tmp_path, trace_id="trace123")
+    trace_id, output_path = save_execution_graph(
+        graph, output_dir=tmp_path, trace_id="trace123"
+    )
 
     assert trace_id == "trace123"
     assert output_path.exists()
@@ -59,15 +75,31 @@ def test_agent_trace_endpoints(monkeypatch, tmp_path: Path) -> None:
         return {
             "question": question,
             "plan": [
-                {"step_id": 1, "kind": "tool", "instruction": "query db", "tool_name": "UserDBQuery"},
+                {
+                    "step_id": 1,
+                    "kind": "tool",
+                    "instruction": "query db",
+                    "tool_name": "UserDBQuery",
+                },
                 {"step_id": 2, "kind": "summary", "instruction": "summarize"},
             ],
-            "observations": [{"step_id": 1, "tool": "UserDBQuery", "input": "SELECT 1", "output": "[(1,)]"}],
+            "observations": [
+                {
+                    "step_id": 1,
+                    "tool": "UserDBQuery",
+                    "input": "SELECT 1",
+                    "output": "[(1,)]",
+                }
+            ],
             "answer": "summary answer",
         }
 
     monkeypatch.setattr(main_module.planner_executor_agent, "execute", fake_execute)
-    monkeypatch.setattr(main_module, "save_execution_graph", lambda graph: ("trace999", tmp_path / "trace999.json"))
+    monkeypatch.setattr(
+        main_module,
+        "save_execution_graph",
+        lambda graph: ("trace999", tmp_path / "trace999.json"),
+    )
 
     (tmp_path / "trace999.json").write_text(
         json.dumps(
@@ -82,8 +114,13 @@ def test_agent_trace_endpoints(monkeypatch, tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    monkeypatch.setattr(main_module, "load_execution_graph",
-                        lambda trace_id: json.loads((tmp_path / "trace999.json").read_text(encoding="utf-8")))
+    monkeypatch.setattr(
+        main_module,
+        "load_execution_graph",
+        lambda trace_id: json.loads(
+            (tmp_path / "trace999.json").read_text(encoding="utf-8")
+        ),
+    )
 
     client = TestClient(app)
     create_resp = client.post("/agent/trace", json={"question": "test question"})

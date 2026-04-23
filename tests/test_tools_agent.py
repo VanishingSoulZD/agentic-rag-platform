@@ -17,7 +17,9 @@ def test_db_query_tool_sqlite(tmp_path: Path) -> None:
     db_path = tmp_path / "users.db"
     initialize_local_user_db(db_path)
 
-    result = query_local_user_db("SELECT name, city FROM users ORDER BY id LIMIT 2", db_path=db_path)
+    result = query_local_user_db(
+        "SELECT name, city FROM users ORDER BY id LIMIT 2", db_path=db_path
+    )
     assert "Alice" in result and "Bob" in result
 
 
@@ -36,6 +38,7 @@ def test_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
     from langchain_core.language_models import BaseChatModel
     from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
     from langchain_core.outputs import ChatGeneration, ChatResult
+
     from app.langchain_tools.agent import build_agent, run_agent
 
     class RuleBasedToolModel(BaseChatModel):
@@ -53,10 +56,17 @@ def test_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
 
         def _generate(self, messages, stop=None, run_manager=None, **kwargs):
             if any(isinstance(msg, ToolMessage) for msg in messages):
-                tool_outputs = [msg.content for msg in messages if isinstance(msg, ToolMessage)]
+                tool_outputs = [
+                    msg.content for msg in messages if isinstance(msg, ToolMessage)
+                ]
                 final = " | ".join(tool_outputs)
                 return ChatResult(
-                    generations=[ChatGeneration(message=AIMessage(content=f"Integrated result: {final}"))])
+                    generations=[
+                        ChatGeneration(
+                            message=AIMessage(content=f"Integrated result: {final}")
+                        )
+                    ]
+                )
 
             user_text = ""
             for msg in reversed(messages):
@@ -71,22 +81,37 @@ def test_agent_can_call_weather_and_db_tools(tmp_path: Path) -> None:
                             message=AIMessage(
                                 content="",
                                 tool_calls=[
-                                    {"name": "UserDBQuery",
-                                     "args": {"query": "SELECT city FROM users WHERE name='Alice'"}, "id": "db_1"},
-                                    {"name": "WeatherAPI", "args": {"city": "Taipei"}, "id": "w_1"},
+                                    {
+                                        "name": "UserDBQuery",
+                                        "args": {
+                                            "query": "SELECT city FROM users WHERE name='Alice'"
+                                        },
+                                        "id": "db_1",
+                                    },
+                                    {
+                                        "name": "WeatherAPI",
+                                        "args": {"city": "Taipei"},
+                                        "id": "w_1",
+                                    },
                                 ],
                             )
                         )
                     ]
                 )
 
-            return ChatResult(generations=[ChatGeneration(message=AIMessage(content="No tool needed"))])
+            return ChatResult(
+                generations=[
+                    ChatGeneration(message=AIMessage(content="No tool needed"))
+                ]
+            )
 
     db_path = tmp_path / "users.db"
     initialize_local_user_db(db_path)
 
     agent = build_agent(RuleBasedToolModel(), db_path=db_path)
-    answer = run_agent(agent, "Please tell me Alice city from DB and weather of that city")
+    answer = run_agent(
+        agent, "Please tell me Alice city from DB and weather of that city"
+    )
 
     assert "Taipei" in answer
     assert "Alice" not in answer  # final answer should be integrated tool outputs only

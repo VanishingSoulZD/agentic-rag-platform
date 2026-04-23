@@ -35,10 +35,14 @@ def _load_index_and_chunks() -> tuple[faiss.Index, list[dict[str, Any]]]:
 
 def _encode(texts: list[str]) -> np.ndarray:
     model = _get_embedding_model()
-    return model.encode(texts, convert_to_numpy=True, normalize_embeddings=True).astype(np.float32)
+    return model.encode(texts, convert_to_numpy=True, normalize_embeddings=True).astype(
+        np.float32
+    )
 
 
-def retrieve(query: str, k: int = 12, rerank_k: int = 6, top_docs: int = 3) -> list[dict[str, Any]]:
+def retrieve(
+    query: str, k: int = 12, rerank_k: int = 6, top_docs: int = 3
+) -> list[dict[str, Any]]:
     index, chunks = _load_index_and_chunks()
 
     q_emb = _encode([query])
@@ -70,7 +74,9 @@ def retrieve(query: str, k: int = 12, rerank_k: int = 6, top_docs: int = 3) -> l
         if not current or item["rerank_score"] > current["rerank_score"]:
             per_doc[item["doc_id"]] = item
 
-    return sorted(per_doc.values(), key=lambda item: item["rerank_score"], reverse=True)[:top_docs]
+    return sorted(
+        per_doc.values(), key=lambda item: item["rerank_score"], reverse=True
+    )[:top_docs]
 
 
 def rag_search(query: str, k: int = 5) -> dict[str, Any]:

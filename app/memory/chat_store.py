@@ -28,7 +28,7 @@ class InMemoryChatStore:
         history = self._data.setdefault(session_id, [])
         history.append(message)
         if len(history) > self.max_messages:
-            self._data[session_id] = history[-self.max_messages:]
+            self._data[session_id] = history[-self.max_messages :]
 
     def get_memory(self, session_id: str) -> list[dict[str, str]]:
         return list(self._data.get(session_id, []))
@@ -90,7 +90,9 @@ class HybridChatStore:
 
     def _use_memory_fallback(self, op_name: str, err: Exception) -> None:
         if not self._prefer_memory:
-            logger.warning("redis_unavailable op=%s err=%s; fallback=in-memory", op_name, repr(err))
+            logger.warning(
+                "redis_unavailable op=%s err=%s; fallback=in-memory", op_name, repr(err)
+            )
         self._prefer_memory = True
 
     def append_message(self, session_id: str, message: dict[str, str]) -> None:

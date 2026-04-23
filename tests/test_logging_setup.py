@@ -3,42 +3,42 @@ import logging
 
 
 def _reload_logging_setup_module():
-    module = importlib.import_module('app.logging_setup')
+    module = importlib.import_module("app.logging_setup")
     return importlib.reload(module)
 
 
 def test_configure_logging_creates_rotating_log_files(tmp_path, monkeypatch):
     logging_setup = _reload_logging_setup_module()
 
-    monkeypatch.setenv('LOG_DIR', str(tmp_path))
-    monkeypatch.setenv('LOG_FORMAT', 'text')
-    monkeypatch.setenv('APP_LOG_FILE', 'application.log')
-    monkeypatch.setenv('ERROR_LOG_FILE', 'application.error.log')
+    monkeypatch.setenv("LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("LOG_FORMAT", "text")
+    monkeypatch.setenv("APP_LOG_FILE", "application.log")
+    monkeypatch.setenv("ERROR_LOG_FILE", "application.error.log")
 
     root = logging.getLogger()
     original_handlers = list(root.handlers)
-    if hasattr(root, '_app_logging_configured'):
-        delattr(root, '_app_logging_configured')
+    if hasattr(root, "_app_logging_configured"):
+        delattr(root, "_app_logging_configured")
 
     try:
         logging_setup.configure_logging()
-        logger = logging.getLogger('test.logging')
-        logger.info('hello')
-        logger.error('boom')
+        logger = logging.getLogger("test.logging")
+        logger.info("hello")
+        logger.error("boom")
 
         for handler in root.handlers:
-            if hasattr(handler, 'flush'):
+            if hasattr(handler, "flush"):
                 handler.flush()
 
-        app_log_path = tmp_path / 'application.log'
-        error_log_path = tmp_path / 'application.error.log'
+        app_log_path = tmp_path / "application.log"
+        error_log_path = tmp_path / "application.error.log"
 
         assert app_log_path.exists()
         assert error_log_path.exists()
 
-        app_log_content = app_log_path.read_text(encoding='utf-8')
-        assert 'test_logging_setup.py' in app_log_content
-        assert 'test_configure_logging_creates_rotating_log_files' in app_log_content
+        app_log_content = app_log_path.read_text(encoding="utf-8")
+        assert "test_logging_setup.py" in app_log_content
+        assert "test_configure_logging_creates_rotating_log_files" in app_log_content
     finally:
         for handler in root.handlers:
             try:
@@ -46,8 +46,8 @@ def test_configure_logging_creates_rotating_log_files(tmp_path, monkeypatch):
             except Exception:
                 pass
         root.handlers = original_handlers
-        if hasattr(root, '_app_logging_configured'):
-            delattr(root, '_app_logging_configured')
+        if hasattr(root, "_app_logging_configured"):
+            delattr(root, "_app_logging_configured")
 
 
 def test_json_formatter_contains_code_location_fields():
@@ -55,14 +55,14 @@ def test_json_formatter_contains_code_location_fields():
     formatter = logging_setup.JsonLogFormatter()
 
     record = logging.LogRecord(
-        name='demo',
+        name="demo",
         level=logging.INFO,
-        pathname='/tmp/demo.py',
+        pathname="/tmp/demo.py",
         lineno=42,
-        msg='ok',
+        msg="ok",
         args=(),
         exc_info=None,
-        func='handler',
+        func="handler",
     )
     output = formatter.format(record)
 

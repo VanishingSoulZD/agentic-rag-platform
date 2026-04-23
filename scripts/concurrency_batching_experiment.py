@@ -56,10 +56,14 @@ class CloudAPISim:
         await asyncio.sleep(latency)
         return latency
 
-    def estimate_cost(self, requests: list[RequestSpec], wall_time_s: float) -> tuple[float, float]:
+    def estimate_cost(
+        self, requests: list[RequestSpec], wall_time_s: float
+    ) -> tuple[float, float]:
         in_tokens = sum(r.prompt_tokens for r in requests)
         out_tokens = sum(r.output_tokens for r in requests)
-        cost = (in_tokens / 1_000_000) * self.in_price_per_m + (out_tokens / 1_000_000) * self.out_price_per_m
+        cost = (in_tokens / 1_000_000) * self.in_price_per_m + (
+            out_tokens / 1_000_000
+        ) * self.out_price_per_m
         cost_per_1k = cost / (len(requests) / 1000)
         return cost, cost_per_1k
 
@@ -81,7 +85,9 @@ class SingleProcessHFSim:
             await asyncio.sleep(latency)
             return latency
 
-    def estimate_cost(self, requests: list[RequestSpec], wall_time_s: float) -> tuple[float, float]:
+    def estimate_cost(
+        self, requests: list[RequestSpec], wall_time_s: float
+    ) -> tuple[float, float]:
         cost = (wall_time_s / 3600) * self.gpu_hourly_usd
         cost_per_1k = cost / (len(requests) / 1000)
         return cost, cost_per_1k
@@ -95,7 +101,9 @@ class VLLMBatchingSim:
     def __init__(self, batch_window_ms: int = 40, max_batch_size: int = 16) -> None:
         self.batch_window_s = batch_window_ms / 1000
         self.max_batch_size = max_batch_size
-        self.queue: asyncio.Queue[tuple[RequestSpec, asyncio.Future[float], float]] = asyncio.Queue()
+        self.queue: asyncio.Queue[tuple[RequestSpec, asyncio.Future[float], float]] = (
+            asyncio.Queue()
+        )
         self._runner_task: asyncio.Task | None = None
         self._stop = False
 
@@ -142,7 +150,9 @@ class VLLMBatchingSim:
                 if not fut.done():
                     fut.set_result(now - enqueue_at)
 
-    def estimate_cost(self, requests: list[RequestSpec], wall_time_s: float) -> tuple[float, float]:
+    def estimate_cost(
+        self, requests: list[RequestSpec], wall_time_s: float
+    ) -> tuple[float, float]:
         cost = (wall_time_s / 3600) * self.gpu_hourly_usd
         cost_per_1k = cost / (len(requests) / 1000)
         return cost, cost_per_1k
@@ -160,7 +170,9 @@ def percentile(vals: list[float], pct: float) -> float:
     return sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f)
 
 
-async def run_backend(name: str, backend, requests: list[RequestSpec]) -> BackendMetrics:
+async def run_backend(
+    name: str, backend, requests: list[RequestSpec]
+) -> BackendMetrics:
     if isinstance(backend, VLLMBatchingSim):
         await backend.start()
 
@@ -198,7 +210,9 @@ def make_requests(n: int, seed: int) -> list[RequestSpec]:
     for i in range(1, n + 1):
         prompt_tokens = rng.randint(300, 1600)
         output_tokens = rng.randint(120, 320)
-        reqs.append(RequestSpec(id=i, prompt_tokens=prompt_tokens, output_tokens=output_tokens))
+        reqs.append(
+            RequestSpec(id=i, prompt_tokens=prompt_tokens, output_tokens=output_tokens)
+        )
     return reqs
 
 
@@ -215,10 +229,14 @@ async def main_async(args) -> None:
         "request_mix": {
             "prompt_tokens_min": min(r.prompt_tokens for r in requests),
             "prompt_tokens_max": max(r.prompt_tokens for r in requests),
-            "prompt_tokens_avg": round(statistics.mean(r.prompt_tokens for r in requests), 2),
+            "prompt_tokens_avg": round(
+                statistics.mean(r.prompt_tokens for r in requests), 2
+            ),
             "output_tokens_min": min(r.output_tokens for r in requests),
             "output_tokens_max": max(r.output_tokens for r in requests),
-            "output_tokens_avg": round(statistics.mean(r.output_tokens for r in requests), 2),
+            "output_tokens_avg": round(
+                statistics.mean(r.output_tokens for r in requests), 2
+            ),
         },
         "metrics": [asdict(cloud), asdict(hf), asdict(vllm)],
     }
