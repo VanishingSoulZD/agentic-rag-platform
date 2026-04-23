@@ -57,6 +57,16 @@ def test_factory_can_auto_detect_gemini(monkeypatch) -> None:
     assert isinstance(provider, GeminiProvider)
 
 
+def test_factory_with_api_key_arg_only_defaults_to_openai(monkeypatch) -> None:
+    monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+
+    provider = create_provider(api_key="test-openai-key")
+
+    assert isinstance(provider, OpenAIProvider)
+
+
 def test_factory_explicit_provider_requires_key(monkeypatch) -> None:
     monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
 

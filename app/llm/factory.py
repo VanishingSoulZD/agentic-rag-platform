@@ -21,6 +21,10 @@ def _get_provider_api_key(provider: str, api_key: str | None) -> str | None:
     return api_key or os.getenv(_PROVIDER_KEY_ENV[provider])
 
 
+def _get_provider_env_api_key(provider: str) -> str | None:
+    return os.getenv(_PROVIDER_KEY_ENV[provider])
+
+
 def _build_provider(
     selected_provider: str,
     api_key: str | None,
@@ -92,7 +96,7 @@ def create_provider(
         )
 
     for candidate in ("fireworks", "openrouter", "gemini"):
-        if _get_provider_api_key(candidate, api_key):
+        if _get_provider_env_api_key(candidate):
             return _build_provider(
                 selected_provider=candidate,
                 api_key=api_key,
