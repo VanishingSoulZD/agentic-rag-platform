@@ -116,13 +116,16 @@ docker run -d --name agentic-rag-platform-redis -p 6379:6379 redis:7
 
 配置 LLM：
 
+- 默认行为：未显式指定 provider 时，系统先按可用凭据自动探测（Fireworks/OpenRouter/Gemini），若都不可用则回退到 OpenAI。
+- OpenAI 兜底使用 `OPENAI_API_KEY` 与 `OPENAI_MODEL`。
+
 ```bash
-# 真实 LLM（可选）
+# OpenAI（默认兜底 provider）
 export OPENAI_API_KEY="your_api_key"
 export OPENAI_MODEL="gpt-4.1-mini"
 # export OPENAI_API_BASE="https://api.openai.com/v1"
 
-# Mock 模式（无 key 时默认自动启用；也可显式开启）
+# Mock 模式（可显式开启）
 export MOCK_LLM=true
 ```
 
