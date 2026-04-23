@@ -48,7 +48,9 @@ def causal_softmax(scores: torch.Tensor) -> torch.Tensor:
     return torch.softmax(scores, dim=-1)
 
 
-def run_experiment(history_tokens: int, gen_tokens: int, d_model: int, device: str) -> Result:
+def run_experiment(
+    history_tokens: int, gen_tokens: int, d_model: int, device: str
+) -> Result:
     dtype = torch.float32 if device == "cpu" else torch.float16
     torch.manual_seed(42)
 

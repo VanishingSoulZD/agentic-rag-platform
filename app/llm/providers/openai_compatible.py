@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 from openai import APIConnectionError, APIError, AsyncOpenAI, RateLimitError
 
@@ -28,8 +28,14 @@ class OpenAICompatibleProvider:
         self.model = model
         self.timeout_seconds = timeout_seconds
         self.max_retries = max_retries
-        self.mock_mode = (os.getenv("MOCK_LLM", "").lower() in {"1", "true", "yes"}) or not self.api_key
-        self.client = None if self.mock_mode else AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        self.mock_mode = (
+            os.getenv("MOCK_LLM", "").lower() in {"1", "true", "yes"}
+        ) or not self.api_key
+        self.client = (
+            None
+            if self.mock_mode
+            else AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        )
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
@@ -37,7 +43,9 @@ class OpenAICompatibleProvider:
 
     @staticmethod
     def _extract_latest_user_text(messages: list[dict[str, str]]) -> str:
-        return next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
+        return next(
+            (m["content"] for m in reversed(messages) if m.get("role") == "user"), ""
+        )
 
     async def chat(self, messages: list[dict[str, str]]) -> LLMResult:
         if self.mock_mode:
@@ -56,7 +64,9 @@ class OpenAICompatibleProvider:
                 completion_tokens,
                 total_tokens,
             )
-            return LLMResult(answer, prompt_tokens, completion_tokens, total_tokens, self.model, True)
+            return LLMResult(
+                answer, prompt_tokens, completion_tokens, total_tokens, self.model, True
+            )
 
         last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
@@ -70,9 +80,17 @@ class OpenAICompatibleProvider:
                 )
                 answer = response.choices[0].message.content or ""
                 usage = response.usage
-                prompt_tokens = usage.prompt_tokens if usage else self._estimate_tokens(str(messages))
-                completion_tokens = usage.completion_tokens if usage else self._estimate_tokens(answer)
-                total_tokens = usage.total_tokens if usage else prompt_tokens + completion_tokens
+                prompt_tokens = (
+                    usage.prompt_tokens
+                    if usage
+                    else self._estimate_tokens(str(messages))
+                )
+                completion_tokens = (
+                    usage.completion_tokens if usage else self._estimate_tokens(answer)
+                )
+                total_tokens = (
+                    usage.total_tokens if usage else prompt_tokens + completion_tokens
+                )
                 logger.info(
                     "llm_use provider=%s model=%s mock=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
                     self.provider_name,
@@ -82,7 +100,14 @@ class OpenAICompatibleProvider:
                     completion_tokens,
                     total_tokens,
                 )
-                return LLMResult(answer, prompt_tokens, completion_tokens, total_tokens, self.model, False)
+                return LLMResult(
+                    answer,
+                    prompt_tokens,
+                    completion_tokens,
+                    total_tokens,
+                    self.model,
+                    False,
+                )
             except (TimeoutError, APIConnectionError, RateLimitError, APIError) as err:
                 last_error = err
                 if attempt >= self.max_retries:
@@ -97,9 +122,13 @@ class OpenAICompatibleProvider:
                 )
                 await asyncio.sleep(sleep_seconds)
 
-        raise RuntimeError(f"LLM request failed after retries(provider={self.provider_name}): {last_error}")
+        raise RuntimeError(
+            f"LLM request failed after retries(provider={self.provider_name}): {last_error}"
+        )
 
-    async def stream_chat(self, messages: list[dict[str, str]]) -> AsyncGenerator[dict, None]:
+    async def stream_chat(
+        self, messages: list[dict[str, str]]
+    ) -> AsyncGenerator[dict, None]:
         if self.mock_mode:
             user_text = self._extract_latest_user_text(messages)
             answer = f"[MOCK] 你问的是：{user_text}"

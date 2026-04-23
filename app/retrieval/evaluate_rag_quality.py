@@ -70,10 +70,15 @@ def _load_gold() -> list[EvalItem]:
 
 
 def _load_corpus() -> dict[str, str]:
-    return {path.name: path.read_text(encoding="utf-8") for path in sorted(DOC_DIR.glob("*.txt"))}
+    return {
+        path.name: path.read_text(encoding="utf-8")
+        for path in sorted(DOC_DIR.glob("*.txt"))
+    }
 
 
-def _bm25_scores(query: str, corpus: dict[str, str], k1: float = 1.5, b: float = 0.75) -> list[tuple[str, float]]:
+def _bm25_scores(
+    query: str, corpus: dict[str, str], k1: float = 1.5, b: float = 0.75
+) -> list[tuple[str, float]]:
     docs = list(corpus.items())
     tokenized_docs = {doc_id: _tokenize(text) for doc_id, text in docs}
     q_tokens = _tokenize(query)
@@ -109,7 +114,9 @@ def _bm25_scores(query: str, corpus: dict[str, str], k1: float = 1.5, b: float =
     return sorted(scores, key=lambda x: x[1], reverse=True)
 
 
-async def _generate_answer(question: str, docs: list[dict[str, Any]], llm_client: AsyncLLMClient) -> str:
+async def _generate_answer(
+    question: str, docs: list[dict[str, Any]], llm_client: AsyncLLMClient
+) -> str:
     context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
     messages = [
         {
@@ -201,18 +208,26 @@ async def evaluate(k: int = 3) -> dict[str, Any]:
 def _build_suggestions(report: dict[str, Any]) -> list[str]:
     suggestions = []
     if report["retrieval_precision"] < 0.8:
-        suggestions.append("提高 chunk 语义完整性（更小 overlap + 动态 chunk size）并调参 top-k/rerank-k。")
+        suggestions.append(
+            "提高 chunk 语义完整性（更小 overlap + 动态 chunk size）并调参 top-k/rerank-k。"
+        )
     if report["bm25_retrieval_precision"] > report["retrieval_precision"]:
-        suggestions.append("引入 Hybrid Retrieval（BM25 + Embedding 融合）替代单路向量检索。")
+        suggestions.append(
+            "引入 Hybrid Retrieval（BM25 + Embedding 融合）替代单路向量检索。"
+        )
     if report["answer_accuracy"] < 0.75:
         suggestions.append("优化 prompt：增加引用约束、拒答策略和 structured output。")
     if not suggestions:
-        suggestions.append("当前基线可用，下一步建议进行 hard-negative mining 提升长尾问题效果。")
+        suggestions.append(
+            "当前基线可用，下一步建议进行 hard-negative mining 提升长尾问题效果。"
+        )
     return suggestions
 
 
 def write_report(report: dict[str, Any]) -> None:
-    REPORT_JSON.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    REPORT_JSON.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     suggestions = _build_suggestions(report)
     md = [
@@ -231,11 +246,17 @@ def write_report(report: dict[str, Any]) -> None:
 async def _main() -> None:
     report = await evaluate(k=3)
     write_report(report)
-    print(json.dumps({
-        "retrieval_precision": report["retrieval_precision"],
-        "answer_accuracy": report["answer_accuracy"],
-        "bm25_retrieval_precision": report["bm25_retrieval_precision"],
-    }, ensure_ascii=False, indent=2))
+    print(
+        json.dumps(
+            {
+                "retrieval_precision": report["retrieval_precision"],
+                "answer_accuracy": report["answer_accuracy"],
+                "bm25_retrieval_precision": report["bm25_retrieval_precision"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     print(f"Report written: {REPORT_MD}")
 
 

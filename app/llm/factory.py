@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import os
 
-from config import config
-
 from app.llm.interfaces import AsyncLLMProvider
 from app.llm.providers.fireworks import FireworksProvider
 from app.llm.providers.gemini import GeminiProvider
 from app.llm.providers.openrouter import OpenRouterProvider
+from config import config
 
 
 def create_provider(
@@ -19,8 +18,10 @@ def create_provider(
     max_retries: int = 2,
 ) -> AsyncLLMProvider:
     selected_provider = (
-        provider or os.getenv("LLM_PROVIDER") or config.LLM_PROVIDER or "fireworks"
-    ).strip().lower()
+        (provider or os.getenv("LLM_PROVIDER") or config.LLM_PROVIDER or "fireworks")
+        .strip()
+        .lower()
+    )
     if selected_provider == "fireworks":
         return FireworksProvider(
             api_key=api_key,

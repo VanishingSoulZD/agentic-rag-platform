@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import os
 
-from config import config
-
 from app.llm.providers.openai_compatible import OpenAICompatibleProvider
+from config import config
 
 
 class GeminiProvider(OpenAICompatibleProvider):

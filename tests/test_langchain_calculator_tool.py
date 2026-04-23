@@ -28,7 +28,9 @@ def test_agent_uses_calculator_tool_and_returns_result() -> None:
 
     openai_key = os.getenv("OPENAI_API_KEY")
     if not openai_key:
-        pytest.skip("OPENAI_API_KEY not configured; skip real-LLM tool-calling integration test")
+        pytest.skip(
+            "OPENAI_API_KEY not configured; skip real-LLM tool-calling integration test"
+        )
 
     from app.langchain_tools.agent import build_calculator_agent, run_calculator_agent
 

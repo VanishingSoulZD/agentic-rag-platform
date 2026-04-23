@@ -21,12 +21,17 @@ async def test_composite_question_user_city_weather_and_math(tmp_path: Path) -> 
     assert len(result["plan"]) >= 4
     assert any(item["tool"] == "UserDBQuery" for item in result["observations"])
     assert any(item["tool"] == "WeatherAPI" for item in result["observations"])
-    assert any(item["tool"] == "Calculator" and item["output"] == "23" for item in result["observations"])
+    assert any(
+        item["tool"] == "Calculator" and item["output"] == "23"
+        for item in result["observations"]
+    )
     # assert "MOCK" in result["answer"]
 
 
 @pytest.mark.anyio
-async def test_composite_question_weather_then_math_then_summary(tmp_path: Path) -> None:
+async def test_composite_question_weather_then_math_then_summary(
+    tmp_path: Path,
+) -> None:
     db_path = tmp_path / "users.db"
     initialize_local_user_db(db_path)
     agent = PlannerExecutorAgent(db_path=db_path, llm_client=AsyncLLMClient())
@@ -35,8 +40,14 @@ async def test_composite_question_weather_then_math_then_summary(tmp_path: Path)
     result = await agent.execute(question)
 
     assert len(result["plan"]) >= 3
-    assert any(item["tool"] == "WeatherAPI" and "Beijing" in str(item["input"]) for item in result["observations"])
-    assert any(item["tool"] == "Calculator" and item["output"] == "14.5" for item in result["observations"])
+    assert any(
+        item["tool"] == "WeatherAPI" and "Beijing" in str(item["input"])
+        for item in result["observations"]
+    )
+    assert any(
+        item["tool"] == "Calculator" and item["output"] == "14.5"
+        for item in result["observations"]
+    )
     # assert "observations" in result["answer"]
     assert "observations" in result
 
@@ -51,5 +62,8 @@ async def test_composite_question_db_plus_multiple_calculations(tmp_path: Path) 
     result = await agent.execute(question)
 
     assert any(item["tool"] == "UserDBQuery" for item in result["observations"])
-    assert any(item["tool"] == "Calculator" and item["output"] == "26.0" for item in result["observations"])
+    assert any(
+        item["tool"] == "Calculator" and item["output"] == "26.0"
+        for item in result["observations"]
+    )
     assert result["plan"][-1]["kind"] == "summary"

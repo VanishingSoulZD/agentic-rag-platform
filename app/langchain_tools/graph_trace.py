@@ -24,7 +24,9 @@ def build_execution_graph(execution_result: dict) -> dict:
         if step.get("kind") == "summary":
             label = f"LLM Summary\\n{step['instruction']}"
 
-        nodes.append({"id": step_id, "label": label, "type": step.get("kind", "unknown")})
+        nodes.append(
+            {"id": step_id, "label": label, "type": step.get("kind", "unknown")}
+        )
         edges.append({"from": previous_id, "to": step_id, "label": "next"})
         previous_id = step_id
 
@@ -50,17 +52,20 @@ def to_mermaid(graph: dict) -> str:
         safe_label = str(node["label"]).replace('"', "'")
         lines.append(f'    {node["id"]}["{safe_label}"]')
     for edge in graph["edges"]:
-        lines.append(f'    {edge["from"]} -->|{edge["label"]}| {edge["to"]}')
+        lines.append(f"    {edge['from']} -->|{edge['label']}| {edge['to']}")
     return "\n".join(lines)
 
 
-def save_execution_graph(graph: dict, output_dir: Path = TRACE_OUTPUT_DIR, trace_id: str | None = None) -> tuple[
-    str, Path]:
+def save_execution_graph(
+    graph: dict, output_dir: Path = TRACE_OUTPUT_DIR, trace_id: str | None = None
+) -> tuple[str, Path]:
     """Persist graph JSON file and return (trace_id, path)."""
     output_dir.mkdir(parents=True, exist_ok=True)
     resolved_trace_id = trace_id or uuid4().hex[:12]
     output_file = output_dir / f"{resolved_trace_id}.json"
-    output_file.write_text(json.dumps(graph, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_file.write_text(
+        json.dumps(graph, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     return resolved_trace_id, output_file
 
 
@@ -92,12 +97,12 @@ def build_mermaid_html(graph: dict) -> str:
 </head>
 <body>
   <h2>Agent Execution Graph</h2>
-  <div class=\"meta\"><strong>Question:</strong> {graph.get('meta', {}).get('question', '')}</div>
-  <div class=\"meta\"><strong>Generated At:</strong> {graph.get('meta', {}).get('generated_at', '')}</div>
+  <div class=\"meta\"><strong>Question:</strong> {graph.get("meta", {}).get("question", "")}</div>
+  <div class=\"meta\"><strong>Generated At:</strong> {graph.get("meta", {}).get("generated_at", "")}</div>
   <div class=\"mermaid\">{mermaid_text}</div>
   <h3>Observations</h3>
-  <pre>{json.dumps(graph.get('observations', []), ensure_ascii=False, indent=2)}</pre>
+  <pre>{json.dumps(graph.get("observations", []), ensure_ascii=False, indent=2)}</pre>
   <h3>Final Answer</h3>
-  <pre>{graph.get('answer', '')}</pre>
+  <pre>{graph.get("answer", "")}</pre>
 </body>
 </html>"""

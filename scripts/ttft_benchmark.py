@@ -19,10 +19,10 @@ from openai import AsyncOpenAI, BadRequestError
 
 SHORT_PROMPT = "请用两句话解释 Prefill 和 Decode 的区别。"
 LONG_PROMPT = (
-        "你是推理系统课程助教。请阅读下面背景并最终只输出三行总结。\n"
-        + "背景："
-        + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 60
-        + "要求：用中文，尽量简洁。"
+    "你是推理系统课程助教。请阅读下面背景并最终只输出三行总结。\n"
+    + "背景："
+    + "在大模型推理里，Prefill 阶段会把整段输入一次性编码并写入 KV Cache；" * 60
+    + "要求：用中文，尽量简洁。"
 )
 
 
@@ -43,7 +43,9 @@ def _encoding_for_model(model: str):
         return tiktoken.get_encoding("cl100k_base")
 
 
-async def _create_stream(client: AsyncOpenAI, model: str, prompt: str, with_usage: bool):
+async def _create_stream(
+    client: AsyncOpenAI, model: str, prompt: str, with_usage: bool
+):
     kwargs = dict(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -55,7 +57,9 @@ async def _create_stream(client: AsyncOpenAI, model: str, prompt: str, with_usag
     return await client.chat.completions.create(**kwargs)
 
 
-async def measure_once(client: AsyncOpenAI, model: str, prompt: str, run_id: int, prompt_type: str) -> RunMetric:
+async def measure_once(
+    client: AsyncOpenAI, model: str, prompt: str, run_id: int, prompt_type: str
+) -> RunMetric:
     start = time.perf_counter()
     first_token_at = None
     output_text_parts: list[str] = []
@@ -91,7 +95,9 @@ async def measure_once(client: AsyncOpenAI, model: str, prompt: str, run_id: int
     ttft_ms = (first_token_at - start) * 1000
     gen_seconds = max(end - first_token_at, 1e-9)
     token_per_sec = output_tokens / gen_seconds
-    return RunMetric(prompt_type, run_id, ttft_ms, gen_seconds, token_per_sec, output_tokens)
+    return RunMetric(
+        prompt_type, run_id, ttft_ms, gen_seconds, token_per_sec, output_tokens
+    )
 
 
 def summarize(metrics: list[RunMetric]) -> dict[str, dict[str, float]]:
@@ -120,7 +126,9 @@ def _build_client() -> tuple[AsyncOpenAI, str, str | None]:
     mock_llm = (os.getenv("MOCK_LLM") or "").lower() in {"1", "true", "yes"}
 
     if mock_llm:
-        raise RuntimeError("MOCK_LLM=true，当前脚本要求真实云 API，请关闭 mock 后重试。")
+        raise RuntimeError(
+            "MOCK_LLM=true，当前脚本要求真实云 API，请关闭 mock 后重试。"
+        )
     if not api_key:
         raise RuntimeError("未找到 OPENAI_API_KEY（请在 .env 配置）")
     if not model:

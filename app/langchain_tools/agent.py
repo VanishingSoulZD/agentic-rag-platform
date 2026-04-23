@@ -10,7 +10,11 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage
 
 from app.langchain_tools.db import DEFAULT_DB_PATH
-from app.langchain_tools.registry import build_calculator_tool, build_db_query_tool, build_weather_tool
+from app.langchain_tools.registry import (
+    build_calculator_tool,
+    build_db_query_tool,
+    build_weather_tool,
+)
 from app.security import ToolUsePolicy, sanitize_user_input
 
 
@@ -31,8 +35,14 @@ def build_agent(
 ):
     """Build agent with Calculator + Weather + SQLite tools under tool-use policy."""
 
-    policy = tool_policy or ToolUsePolicy(denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"})
-    all_tools = [build_calculator_tool(), build_weather_tool(), build_db_query_tool(db_path=db_path)]
+    policy = tool_policy or ToolUsePolicy(
+        denied_tools={"AdminAPI", "ShellAPI", "RemoteHTTP"}
+    )
+    all_tools = [
+        build_calculator_tool(),
+        build_weather_tool(),
+        build_db_query_tool(db_path=db_path),
+    ]
     safe_tools = [tool for tool in all_tools if tool.name not in policy.denied_tools]
 
     return create_agent(

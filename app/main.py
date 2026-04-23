@@ -7,7 +7,12 @@ from uuid import uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    StreamingResponse,
+)
 from pydantic import BaseModel
 
 from app.langchain_tools.graph_trace import (
@@ -31,32 +36,47 @@ logger = logging.getLogger(__name__)
 app = FastAPI()
 
 REDIS_TTL_SECONDS = 24 * 60 * 60
-REDIS_KEY_PREFIX = 'chat:memory:'
-REQUEST_ID_HEADER = 'X-Request-ID'
+REDIS_KEY_PREFIX = "chat:memory:"
+REQUEST_ID_HEADER = "X-Request-ID"
 
 chat_store = HybridChatStore(
     ChatStoreConfig(
-        redis_url=os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0'),
+        redis_url=os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0"),
         key_prefix=REDIS_KEY_PREFIX,
         ttl_seconds=REDIS_TTL_SECONDS,
     )
 )
 llm_client = AsyncLLMClient(
-    timeout_seconds=float(os.getenv('LLM_TIMEOUT_SECONDS', os.getenv('OPENAI_TIMEOUT_SECONDS', '20'))),
-    max_retries=int(os.getenv('LLM_MAX_RETRIES', os.getenv('OPENAI_MAX_RETRIES', '2'))),
+    timeout_seconds=float(
+        os.getenv("LLM_TIMEOUT_SECONDS", os.getenv("OPENAI_TIMEOUT_SECONDS", "20"))
+    ),
+    max_retries=int(os.getenv("LLM_MAX_RETRIES", os.getenv("OPENAI_MAX_RETRIES", "2"))),
 )
 cache_manager = CacheManager()
 session_rate_limiter = SessionRateLimiter(
-    limit=int(os.getenv('SESSION_RATE_LIMIT_PER_MINUTE', os.getenv('RAG_RATE_LIMIT_PER_MINUTE', '20'))),
+    limit=int(
+        os.getenv(
+            "SESSION_RATE_LIMIT_PER_MINUTE",
+            os.getenv("RAG_RATE_LIMIT_PER_MINUTE", "20"),
+        )
+    ),
     window_seconds=int(
-        os.getenv('SESSION_RATE_LIMIT_WINDOW_SECONDS', os.getenv('RAG_RATE_LIMIT_WINDOW_SECONDS', '60'))
+        os.getenv(
+            "SESSION_RATE_LIMIT_WINDOW_SECONDS",
+            os.getenv("RAG_RATE_LIMIT_WINDOW_SECONDS", "60"),
+        )
     ),
 )
 planner_executor_agent = PlannerExecutorAgent(tool_cache=cache_manager.tool_cache)
 
 
 def _to_cache_key(prefix: str, *parts: object) -> str:
-    payload = "|".join([prefix, *[json.dumps(part, ensure_ascii=False, sort_keys=True) for part in parts]])
+    payload = "|".join(
+        [
+            prefix,
+            *[json.dumps(part, ensure_ascii=False, sort_keys=True) for part in parts],
+        ]
+    )
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return f"{prefix}:{digest}"
 
@@ -66,7 +86,7 @@ def _has_serving_cache_hit(cache_layers: dict[str, str]) -> bool:
 
 
 def _should_record_metrics_in_middleware(request: Request) -> bool:
-    return request.url.path != '/chat/stream'
+    return request.url.path != "/chat/stream"
 
 
 class ChatRequest(BaseModel):
@@ -91,24 +111,24 @@ def _rate_limited_payload(session_id: str) -> dict[str, object] | None:
         return None
 
     return {
-        'error': 'rate_limited',
-        'code': 429,
-        'retry_after_seconds': retry_after,
-        'session_id': session_id,
+        "error": "rate_limited",
+        "code": 429,
+        "retry_after_seconds": retry_after,
+        "session_id": session_id,
     }
 
 
-@app.middleware('http')
+@app.middleware("http")
 async def log_request_response(request: Request, call_next):
     request_id = request.headers.get(REQUEST_ID_HEADER, str(uuid4()))
     token = set_request_id(request_id)
     start = time.perf_counter()
 
     logger.info(
-        'request_start method=%s path=%s client=%s',
+        "request_start method=%s path=%s client=%s",
         request.method,
         request.url.path,
-        request.client.host if request.client else '-',
+        request.client.host if request.client else "-",
     )
 
     try:
@@ -116,7 +136,7 @@ async def log_request_response(request: Request, call_next):
     except Exception:
         elapsed_ms = (time.perf_counter() - start) * 1000
         logger.exception(
-            'request_failed method=%s path=%s elapsed_ms=%.2f',
+            "request_failed method=%s path=%s elapsed_ms=%.2f",
             request.method,
             request.url.path,
             elapsed_ms,
@@ -128,35 +148,35 @@ async def log_request_response(request: Request, call_next):
                 status_code=500,
                 response_time_ms=elapsed_ms,
                 success=False,
-                ttft_ms=getattr(request.state, 'ttft_ms', None),
-                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
-                completion_tokens=getattr(request.state, 'completion_tokens', 0),
-                cache_hit=getattr(request.state, 'cache_hit', False),
-                cache_layers=getattr(request.state, 'cache_layers', {}),
+                ttft_ms=getattr(request.state, "ttft_ms", None),
+                prompt_tokens=getattr(request.state, "prompt_tokens", 0),
+                completion_tokens=getattr(request.state, "completion_tokens", 0),
+                cache_hit=getattr(request.state, "cache_hit", False),
+                cache_layers=getattr(request.state, "cache_layers", {}),
             )
         raise
     else:
         elapsed_ms = (time.perf_counter() - start) * 1000
         response.headers[REQUEST_ID_HEADER] = request_id
         logger.info(
-            'request_end method=%s path=%s status=%s elapsed_ms=%.2f',
+            "request_end method=%s path=%s status=%s elapsed_ms=%.2f",
             request.method,
             request.url.path,
             response.status_code,
             elapsed_ms,
         )
-        if request.url.path != '/chat/stream':
+        if request.url.path != "/chat/stream":
             metrics_store.record_request(
                 method=request.method,
                 path=request.url.path,
                 status_code=response.status_code,
                 response_time_ms=elapsed_ms,
                 success=response.status_code < 500,
-                ttft_ms=getattr(request.state, 'ttft_ms', None),
-                prompt_tokens=getattr(request.state, 'prompt_tokens', 0),
-                completion_tokens=getattr(request.state, 'completion_tokens', 0),
-                cache_hit=getattr(request.state, 'cache_hit', False),
-                cache_layers=getattr(request.state, 'cache_layers', {}),
+                ttft_ms=getattr(request.state, "ttft_ms", None),
+                prompt_tokens=getattr(request.state, "prompt_tokens", 0),
+                completion_tokens=getattr(request.state, "completion_tokens", 0),
+                cache_hit=getattr(request.state, "cache_hit", False),
+                cache_layers=getattr(request.state, "cache_layers", {}),
             )
         return response
     finally:
@@ -165,58 +185,61 @@ async def log_request_response(request: Request, call_next):
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.warning('validation_error path=%s detail=%s', request.url.path, exc.errors())
+    logger.warning("validation_error path=%s detail=%s", request.url.path, exc.errors())
     return JSONResponse(
         status_code=422,
         content={
-            'error': 'invalid_request',
-            'code': 422,
+            "error": "invalid_request",
+            "code": 422,
         },
     )
 
 
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
-    logger.exception('internal_error path=%s error=%s', request.url.path, str(exc))
+    logger.exception("internal_error path=%s error=%s", request.url.path, str(exc))
     return JSONResponse(
         status_code=500,
         content={
-            'error': 'internal_server_error',
-            'code': 500,
+            "error": "internal_server_error",
+            "code": 500,
         },
     )
 
 
-@app.get('/ping')
+@app.get("/ping")
 def ping() -> dict[str, str]:
-    return {'status': 'ok'}
+    return {"status": "ok"}
 
 
-@app.get('/metrics')
+@app.get("/metrics")
 def metrics() -> PlainTextResponse:
-    return PlainTextResponse(metrics_store.render_prometheus(), media_type='text/plain; version=0.0.4')
+    return PlainTextResponse(
+        metrics_store.render_prometheus(), media_type="text/plain; version=0.0.4"
+    )
 
 
-@app.post('/agent/trace')
+@app.post("/agent/trace")
 async def agent_trace(req: AgentTraceRequest, request: Request) -> dict[str, object]:
     sanitized_question = sanitize_user_input(req.question)
     embedding_hits_before = cache_manager.embedding_cache.hits
     cached_payload, similarity, strategy = cache_manager.response_cache.lookup(
-        _to_cache_key("agent_trace", sanitized_question))
+        _to_cache_key("agent_trace", sanitized_question)
+    )
     if cached_payload is not None:
-        request.state.cache_layers = {'response': strategy}
+        request.state.cache_layers = {"response": strategy}
         if cache_manager.embedding_cache.hits > embedding_hits_before:
-            request.state.cache_layers['embedding'] = 'exact'
+            request.state.cache_layers["embedding"] = "exact"
         request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
         return {
             **cached_payload,
-            'cache': {
-                'hit': True,
-                'layer': 'response',
-                'strategy': strategy,
-                'similarity': similarity,
+            "cache": {
+                "hit": True,
+                "layer": "response",
+                "strategy": strategy,
+                "similarity": similarity,
             },
-            'cache_layers': request.state.cache_layers,
+            "cache_layers": request.state.cache_layers,
         }
 
     execution_result = await planner_executor_agent.execute(sanitized_question)
@@ -224,37 +247,39 @@ async def agent_trace(req: AgentTraceRequest, request: Request) -> dict[str, obj
     trace_id, output_path = save_execution_graph(graph)
 
     response = {
-        'trace_id': trace_id,
-        'graph_file': str(output_path),
-        'graph': graph,
-        'answer': execution_result['answer'],
-        'cache': {
-            'hit': False,
-            'layer': None,
-            'strategy': 'miss',
-            'similarity': similarity,
+        "trace_id": trace_id,
+        "graph_file": str(output_path),
+        "graph": graph,
+        "answer": execution_result["answer"],
+        "cache": {
+            "hit": False,
+            "layer": None,
+            "strategy": "miss",
+            "similarity": similarity,
         },
     }
-    cache_manager.response_cache.store(_to_cache_key("agent_trace", sanitized_question), response)
-    request.state.cache_layers = dict(execution_result.get('cache_layers', {}))
+    cache_manager.response_cache.store(
+        _to_cache_key("agent_trace", sanitized_question), response
+    )
+    request.state.cache_layers = dict(execution_result.get("cache_layers", {}))
     if cache_manager.embedding_cache.hits > embedding_hits_before:
-        request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_layers["embedding"] = "exact"
     request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
     return response
 
 
-@app.get('/agent/trace/{trace_id}')
+@app.get("/agent/trace/{trace_id}")
 def get_agent_trace(trace_id: str) -> dict:
     return load_execution_graph(trace_id)
 
 
-@app.get('/agent/trace/{trace_id}/view')
+@app.get("/agent/trace/{trace_id}/view")
 def view_agent_trace(trace_id: str) -> HTMLResponse:
     graph = load_execution_graph(trace_id)
     return HTMLResponse(build_mermaid_html(graph))
 
 
-@app.post('/chat')
+@app.post("/chat")
 async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     rate_limited = _rate_limited_payload(req.session_id)
     if rate_limited is not None:
@@ -263,78 +288,99 @@ async def chat(req: ChatRequest, request: Request) -> dict[str, object]:
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
-    cache_key = _to_cache_key("chat", req.session_id, history_before[-8:], sanitized_message)
-    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
-    logger.info(f'cached_payload={cached_payload}, similarity={similarity}, strategy={strategy}')
+    cache_key = _to_cache_key(
+        "chat", req.session_id, history_before[-8:], sanitized_message
+    )
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(
+        cache_key
+    )
+    logger.info(
+        f"cached_payload={cached_payload}, similarity={similarity}, strategy={strategy}"
+    )
 
     if cached_payload is not None:
-        chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
-        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': str(cached_payload['answer'])})
-        request.state.cache_layers = {'response': strategy}
+        chat_store.append_message(
+            req.session_id, {"role": "user", "content": sanitized_message}
+        )
+        chat_store.append_message(
+            req.session_id,
+            {"role": "assistant", "content": str(cached_payload["answer"])},
+        )
+        request.state.cache_layers = {"response": strategy}
         if cache_manager.embedding_cache.hits > embedding_hits_before:
-            request.state.cache_layers['embedding'] = 'exact'
+            request.state.cache_layers["embedding"] = "exact"
         request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
         request.state.prompt_tokens = 0
         request.state.completion_tokens = 0
         return {
             **cached_payload,
-            'history': chat_store.get_memory(req.session_id),
-            'cache': {
-                'hit': True,
-                'layer': 'response',
-                'strategy': strategy,
-                'similarity': similarity,
+            "history": chat_store.get_memory(req.session_id),
+            "cache": {
+                "hit": True,
+                "layer": "response",
+                "strategy": strategy,
+                "similarity": similarity,
             },
-            'cache_layers': request.state.cache_layers,
+            "cache_layers": request.state.cache_layers,
         }
 
-    chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
+    chat_store.append_message(
+        req.session_id, {"role": "user", "content": sanitized_message}
+    )
 
     history = chat_store.get_memory(req.session_id)
     llm_result = await llm_client.chat(history)
 
-    chat_store.append_message(req.session_id, {'role': 'assistant', 'content': llm_result.answer})
+    chat_store.append_message(
+        req.session_id, {"role": "assistant", "content": llm_result.answer}
+    )
 
     request.state.prompt_tokens = llm_result.prompt_tokens
     request.state.completion_tokens = llm_result.completion_tokens
     request.state.cache_layers = {}
     if cache_manager.embedding_cache.hits > embedding_hits_before:
-        request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_layers["embedding"] = "exact"
     request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
 
     response = {
-        'answer': llm_result.answer,
-        'session_id': req.session_id,
-        'history': chat_store.get_memory(req.session_id),
-        'use': {
-            'model': llm_result.model,
-            'mock': llm_result.mock,
-            'prompt_tokens': llm_result.prompt_tokens,
-            'completion_tokens': llm_result.completion_tokens,
-            'total_tokens': llm_result.total_tokens,
+        "answer": llm_result.answer,
+        "session_id": req.session_id,
+        "history": chat_store.get_memory(req.session_id),
+        "use": {
+            "model": llm_result.model,
+            "mock": llm_result.mock,
+            "prompt_tokens": llm_result.prompt_tokens,
+            "completion_tokens": llm_result.completion_tokens,
+            "total_tokens": llm_result.total_tokens,
         },
-        'cache': {
-            'hit': False,
-            'layer': None,
-            'strategy': 'miss',
-            'similarity': 0.0,
+        "cache": {
+            "hit": False,
+            "layer": None,
+            "strategy": "miss",
+            "similarity": 0.0,
         },
-        'cache_layers': request.state.cache_layers,
+        "cache_layers": request.state.cache_layers,
     }
-    cache_manager.response_cache.store(cache_key, {'answer': llm_result.answer, 'session_id': req.session_id,
-                                                   'use': response['use']})
+    cache_manager.response_cache.store(
+        cache_key,
+        {
+            "answer": llm_result.answer,
+            "session_id": req.session_id,
+            "use": response["use"],
+        },
+    )
     return response
 
 
-@app.post('/chat/stream')
+@app.post("/chat/stream")
 async def chat_stream(req: ChatRequest, request: Request):
     request_start = time.perf_counter()
     rate_limited = _rate_limited_payload(req.session_id)
     if rate_limited is not None:
         elapsed_ms = (time.perf_counter() - request_start) * 1000
         metrics_store.record_request(
-            method='POST',
-            path='/chat/stream',
+            method="POST",
+            path="/chat/stream",
             status_code=429,
             response_time_ms=elapsed_ms,
             success=True,
@@ -349,17 +395,25 @@ async def chat_stream(req: ChatRequest, request: Request):
     history_before = chat_store.get_memory(req.session_id)
     sanitized_message = sanitize_user_input(req.message)
     embedding_hits_before = cache_manager.embedding_cache.hits
-    cache_key = _to_cache_key("chat_stream", req.session_id, history_before[-8:], sanitized_message)
-    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(cache_key)
+    cache_key = _to_cache_key(
+        "chat_stream", req.session_id, history_before[-8:], sanitized_message
+    )
+    cached_payload, similarity, strategy = cache_manager.response_cache.lookup(
+        cache_key
+    )
 
     if cached_payload is not None:
-        request.state.cache_layers = {'response': strategy}
+        request.state.cache_layers = {"response": strategy}
         if cache_manager.embedding_cache.hits > embedding_hits_before:
-            request.state.cache_layers['embedding'] = 'exact'
+            request.state.cache_layers["embedding"] = "exact"
         request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
-        cached_answer = str(cached_payload.get('answer', ''))
-        chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
-        chat_store.append_message(req.session_id, {'role': 'assistant', 'content': cached_answer})
+        cached_answer = str(cached_payload.get("answer", ""))
+        chat_store.append_message(
+            req.session_id, {"role": "user", "content": sanitized_message}
+        )
+        chat_store.append_message(
+            req.session_id, {"role": "assistant", "content": cached_answer}
+        )
 
         async def cached_event_gen():
             request_start = time.perf_counter()
@@ -370,13 +424,17 @@ async def chat_stream(req: ChatRequest, request: Request):
                         first_token_at = time.perf_counter()
                     yield f"data: {json.dumps({'type': 'token', 'content': token + ' '}, ensure_ascii=False)}\n\n"
                 yield f"data: {json.dumps({'type': 'usage', 'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0, 'model': 'cache', 'mock': True}, ensure_ascii=False)}\n\n"
-                yield 'data: [DONE]\n\n'
+                yield "data: [DONE]\n\n"
             finally:
                 elapsed_ms = (time.perf_counter() - request_start) * 1000
-                ttft_ms = (first_token_at - request_start) * 1000 if first_token_at is not None else None
+                ttft_ms = (
+                    (first_token_at - request_start) * 1000
+                    if first_token_at is not None
+                    else None
+                )
                 metrics_store.record_request(
-                    method='POST',
-                    path='/chat/stream',
+                    method="POST",
+                    path="/chat/stream",
                     status_code=200,
                     response_time_ms=elapsed_ms,
                     success=True,
@@ -387,17 +445,19 @@ async def chat_stream(req: ChatRequest, request: Request):
                     cache_layers=request.state.cache_layers,
                 )
 
-        return StreamingResponse(cached_event_gen(), media_type='text/event-stream')
+        return StreamingResponse(cached_event_gen(), media_type="text/event-stream")
 
     request.state.cache_layers = {}
     if cache_manager.embedding_cache.hits > embedding_hits_before:
-        request.state.cache_layers['embedding'] = 'exact'
+        request.state.cache_layers["embedding"] = "exact"
     request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
-    chat_store.append_message(req.session_id, {'role': 'user', 'content': sanitized_message})
+    chat_store.append_message(
+        req.session_id, {"role": "user", "content": sanitized_message}
+    )
     history = chat_store.get_memory(req.session_id)
 
     async def event_gen():
-        full_answer = ''
+        full_answer = ""
         request_start = time.perf_counter()
         first_token_at = None
         prompt_tokens = 0
@@ -405,40 +465,46 @@ async def chat_stream(req: ChatRequest, request: Request):
 
         try:
             async for event in llm_client.stream_chat(history):
-                if event['type'] == 'token':
-                    token = str(event['content'])
+                if event["type"] == "token":
+                    token = str(event["content"])
                     full_answer += token
                     if first_token_at is None:
                         first_token_at = time.perf_counter()
                     yield f"data: {json.dumps({'type': 'token', 'content': token}, ensure_ascii=False)}\n\n"
-                elif event['type'] == 'usage':
-                    prompt_tokens = event['prompt_tokens']
-                    completion_tokens = event['completion_tokens']
+                elif event["type"] == "usage":
+                    prompt_tokens = event["prompt_tokens"]
+                    completion_tokens = event["completion_tokens"]
                     usage_payload = {
-                        'type': 'usage',
-                        'prompt_tokens': event['prompt_tokens'],
-                        'completion_tokens': event['completion_tokens'],
-                        'total_tokens': event['total_tokens'],
-                        'model': event['model'],
-                        'mock': event['mock'],
+                        "type": "usage",
+                        "prompt_tokens": event["prompt_tokens"],
+                        "completion_tokens": event["completion_tokens"],
+                        "total_tokens": event["total_tokens"],
+                        "model": event["model"],
+                        "mock": event["mock"],
                     }
                     logger.info(
-                        'chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s',
+                        "chat_stream_usage session_id=%s prompt_tokens=%s completion_tokens=%s total_tokens=%s",
                         req.session_id,
-                        event['prompt_tokens'],
-                        event['completion_tokens'],
-                        event['total_tokens'],
+                        event["prompt_tokens"],
+                        event["completion_tokens"],
+                        event["total_tokens"],
                     )
                     yield f"data: {json.dumps(usage_payload, ensure_ascii=False)}\n\n"
 
-            chat_store.append_message(req.session_id, {'role': 'assistant', 'content': full_answer})
-            yield 'data: [DONE]\n\n'
+            chat_store.append_message(
+                req.session_id, {"role": "assistant", "content": full_answer}
+            )
+            yield "data: [DONE]\n\n"
         finally:
             elapsed_ms = (time.perf_counter() - request_start) * 1000
-            ttft_ms = (first_token_at - request_start) * 1000 if first_token_at is not None else None
+            ttft_ms = (
+                (first_token_at - request_start) * 1000
+                if first_token_at is not None
+                else None
+            )
             metrics_store.record_request(
-                method='POST',
-                path='/chat/stream',
+                method="POST",
+                path="/chat/stream",
                 status_code=200,
                 response_time_ms=elapsed_ms,
                 success=True,
@@ -451,12 +517,12 @@ async def chat_stream(req: ChatRequest, request: Request):
             cache_manager.response_cache.store(
                 cache_key,
                 {
-                    'answer': full_answer,
-                    'session_id': req.session_id,
+                    "answer": full_answer,
+                    "session_id": req.session_id,
                 },
             )
 
-    return StreamingResponse(event_gen(), media_type='text/event-stream')
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 async def _rewrite_query_with_history(query: str, history: list[dict[str, str]]) -> str:
@@ -466,14 +532,14 @@ async def _rewrite_query_with_history(query: str, history: list[dict[str, str]])
     recent_history = history[-6:]
     messages = [
         {
-            'role': 'system',
-            'content': (
-                'Rewrite the latest user query into a standalone search query. '
-                'Return only rewritten query text.'
+            "role": "system",
+            "content": (
+                "Rewrite the latest user query into a standalone search query. "
+                "Return only rewritten query text."
             ),
         },
         *recent_history,
-        {'role': 'user', 'content': query},
+        {"role": "user", "content": query},
     ]
     result = await llm_client.chat(messages)
     rewritten = result.answer.strip()
@@ -481,29 +547,31 @@ async def _rewrite_query_with_history(query: str, history: list[dict[str, str]])
 
 
 def _build_rag_messages(
-        query: str,
-        history: list[dict[str, str]],
-        docs: list[dict[str, object]],
+    query: str,
+    history: list[dict[str, str]],
+    docs: list[dict[str, object]],
 ) -> list[dict[str, str]]:
     context = "\n\n".join([f"[{d['doc_id']}] {d['text']}" for d in docs])
     recent_history = history[-8:]
     return [
         {
-            'role': 'system',
-            'content': (
-                'You are a RAG assistant. Answer with retrieved context + conversation history only. '
-                'If context does not contain the answer, say: I don\'t know.'
+            "role": "system",
+            "content": (
+                "You are a RAG assistant. Answer with retrieved context + conversation history only. "
+                "If context does not contain the answer, say: I don't know."
             ),
         },
         *recent_history,
         {
-            'role': 'user',
-            'content': f"Retrieved context:\n{context}\n\nQuestion: {query}",
+            "role": "user",
+            "content": f"Retrieved context:\n{context}\n\nQuestion: {query}",
         },
     ]
 
 
-async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_query: bool) -> dict[str, object]:
+async def _execute_rag_pipeline(
+    query: str, session_id: str, k: int, rewrite_query: bool
+) -> dict[str, object]:
     rate_limited = _rate_limited_payload(session_id)
     if rate_limited is not None:
         return rate_limited
@@ -512,29 +580,31 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     embedding_hits_before = cache_manager.embedding_cache.hits
     response_cache_key = f"{query}\n[k={k}]\n[rewrite={rewrite_query}]"
 
-    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(response_cache_key)
+    cached_payload, sim, response_strategy = cache_manager.response_cache.lookup(
+        response_cache_key
+    )
     if cached_payload is not None:
-        layer_hits['response'] = response_strategy
+        layer_hits["response"] = response_strategy
         if cache_manager.embedding_cache.hits > embedding_hits_before:
-            layer_hits['embedding'] = 'exact'
+            layer_hits["embedding"] = "exact"
         cached_resp = {
             **cached_payload,
-            'cache': {
-                'hit': True,
-                'layer': 'response',
-                'strategy': response_strategy,
-                'similarity': sim,
+            "cache": {
+                "hit": True,
+                "layer": "response",
+                "strategy": response_strategy,
+                "similarity": sim,
             },
-            'cache_layers': layer_hits,
+            "cache_layers": layer_hits,
         }
         logger.info(
-            'query_rag_trace session_id=%s cache_hit=%s layer=%s strategy=%s similarity=%.4f doc_ids=%s',
+            "query_rag_trace session_id=%s cache_hit=%s layer=%s strategy=%s similarity=%.4f doc_ids=%s",
             session_id,
             True,
-            'response',
+            "response",
             response_strategy,
             sim,
-            cached_resp.get('doc_ids', []),
+            cached_resp.get("doc_ids", []),
         )
         return cached_resp
 
@@ -544,56 +614,60 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
         rewritten_query = await _rewrite_query_with_history(query, history)
 
     retrieval_cache_key = f"{rewritten_query}\n[k={k}]"
-    retrieval_result, retrieval_sim, retrieval_strategy = cache_manager.retrieval_cache.lookup(retrieval_cache_key)
+    retrieval_result, retrieval_sim, retrieval_strategy = (
+        cache_manager.retrieval_cache.lookup(retrieval_cache_key)
+    )
     if retrieval_result is None:
         retrieval_result = rag_search(rewritten_query, k=k)
         cache_manager.retrieval_cache.store(retrieval_cache_key, retrieval_result)
     else:
-        layer_hits['retrieval'] = retrieval_strategy
+        layer_hits["retrieval"] = retrieval_strategy
     if cache_manager.embedding_cache.hits > embedding_hits_before:
-        layer_hits['embedding'] = 'exact'
+        layer_hits["embedding"] = "exact"
 
-    docs = retrieval_result['docs']
-    doc_ids = retrieval_result['doc_ids']
+    docs = retrieval_result["docs"]
+    doc_ids = retrieval_result["doc_ids"]
 
     prompt_messages = _build_rag_messages(query, history, docs)
     llm_result = await llm_client.chat(prompt_messages)
 
-    chat_store.append_message(session_id, {'role': 'user', 'content': query})
-    chat_store.append_message(session_id, {'role': 'assistant', 'content': llm_result.answer})
+    chat_store.append_message(session_id, {"role": "user", "content": query})
+    chat_store.append_message(
+        session_id, {"role": "assistant", "content": llm_result.answer}
+    )
 
-    rerank_scores = [float(doc.get('rerank_score', 0.0)) for doc in docs]
+    rerank_scores = [float(doc.get("rerank_score", 0.0)) for doc in docs]
     response = {
-        'session_id': session_id,
-        'query': query,
-        'rewritten_query': rewritten_query,
-        'answer': llm_result.answer,
-        'sources': docs,
-        'doc_ids': doc_ids,
-        'retrieval': {
-            'items': docs,
-            'doc_ids': doc_ids,
-            'rerank_scores': rerank_scores,
+        "session_id": session_id,
+        "query": query,
+        "rewritten_query": rewritten_query,
+        "answer": llm_result.answer,
+        "sources": docs,
+        "doc_ids": doc_ids,
+        "retrieval": {
+            "items": docs,
+            "doc_ids": doc_ids,
+            "rerank_scores": rerank_scores,
         },
-        'use': {
-            'model': llm_result.model,
-            'mock': llm_result.mock,
-            'prompt_tokens': llm_result.prompt_tokens,
-            'completion_tokens': llm_result.completion_tokens,
-            'total_tokens': llm_result.total_tokens,
+        "use": {
+            "model": llm_result.model,
+            "mock": llm_result.mock,
+            "prompt_tokens": llm_result.prompt_tokens,
+            "completion_tokens": llm_result.completion_tokens,
+            "total_tokens": llm_result.total_tokens,
         },
-        'cache': {
-            'hit': _has_serving_cache_hit(layer_hits),
-            'layer': 'retrieval' if 'retrieval' in layer_hits else None,
-            'strategy': layer_hits.get('retrieval', 'miss'),
-            'similarity': retrieval_sim,
+        "cache": {
+            "hit": _has_serving_cache_hit(layer_hits),
+            "layer": "retrieval" if "retrieval" in layer_hits else None,
+            "strategy": layer_hits.get("retrieval", "miss"),
+            "similarity": retrieval_sim,
         },
-        'cache_layers': layer_hits,
+        "cache_layers": layer_hits,
     }
     cache_manager.response_cache.store(response_cache_key, response)
 
     logger.info(
-        'query_rag_trace session_id=%s rewritten_query=%s cache_hit=%s doc_ids=%s rerank_scores=%s cache_layers=%s',
+        "query_rag_trace session_id=%s rewritten_query=%s cache_hit=%s doc_ids=%s rerank_scores=%s cache_layers=%s",
         session_id,
         rewritten_query,
         _has_serving_cache_hit(layer_hits),
@@ -604,15 +678,17 @@ async def _execute_rag_pipeline(query: str, session_id: str, k: int, rewrite_que
     return response
 
 
-@app.post('/rag/query')
+@app.post("/rag/query")
 async def rag_query(req: RagQueryRequest, request: Request):
     request.state.cache_hit = False
     sanitized_query = sanitize_user_input(req.query)
-    response = await _execute_rag_pipeline(sanitized_query, req.session_id, req.k, req.rewrite_query)
-    if isinstance(response, dict) and response.get('code') == 429:
+    response = await _execute_rag_pipeline(
+        sanitized_query, req.session_id, req.k, req.rewrite_query
+    )
+    if isinstance(response, dict) and response.get("code") == 429:
         return JSONResponse(status_code=429, content=response)
-    request.state.prompt_tokens = response['use']['prompt_tokens']
-    request.state.completion_tokens = response['use']['completion_tokens']
-    request.state.cache_layers = response.get('cache_layers', {})
+    request.state.prompt_tokens = response["use"]["prompt_tokens"]
+    request.state.completion_tokens = response["use"]["completion_tokens"]
+    request.state.cache_layers = response.get("cache_layers", {})
     request.state.cache_hit = _has_serving_cache_hit(request.state.cache_layers)
     return response

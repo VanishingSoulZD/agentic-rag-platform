@@ -28,7 +28,9 @@ def get_encoder():
 def load_docs(doc_dir: Path = DOC_DIR) -> list[dict[str, str]]:
     docs: list[dict[str, str]] = []
     for file_path in sorted(doc_dir.glob("*.txt")):
-        docs.append({"doc_id": file_path.name, "text": file_path.read_text(encoding="utf-8")})
+        docs.append(
+            {"doc_id": file_path.name, "text": file_path.read_text(encoding="utf-8")}
+        )
     return docs
 
 
@@ -75,7 +77,9 @@ def build_index() -> tuple[int, int, int]:
 
     ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
     faiss.write_index(index, str(INDEX_PATH))
-    CHUNKS_PATH.write_text(json.dumps(chunks, ensure_ascii=False, indent=2), encoding="utf-8")
+    CHUNKS_PATH.write_text(
+        json.dumps(chunks, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     return len(docs), len(chunks), dim
 
