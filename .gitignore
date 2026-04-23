@@ -83,4 +83,5 @@ checkpoints/
 # 输出目录
 # ======================
 logs/
-reports/
+reports/*
+!reports/.gitkeep
