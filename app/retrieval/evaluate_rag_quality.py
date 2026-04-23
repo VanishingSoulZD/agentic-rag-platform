@@ -16,6 +16,7 @@ from typing import Any
 
 from app.llm_client import AsyncLLMClient
 from app.retrieval.retriever import rag_search
+from app.utils import ensure_output_parent
 
 DOC_DIR = Path("data/docs")
 GOLD_PATH = Path("app/retrieval/eval/gold_qa.json")
@@ -225,7 +226,7 @@ def _build_suggestions(report: dict[str, Any]) -> list[str]:
 
 
 def write_report(report: dict[str, Any]) -> None:
-    REPORT_JSON.write_text(
+    ensure_output_parent(REPORT_JSON).write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
@@ -240,7 +241,7 @@ def write_report(report: dict[str, Any]) -> None:
         "## 改进建议",
     ]
     md.extend([f"- {s}" for s in suggestions])
-    REPORT_MD.write_text("\n".join(md), encoding="utf-8")
+    ensure_output_parent(REPORT_MD).write_text("\n".join(md), encoding="utf-8")
 
 
 async def _main() -> None:

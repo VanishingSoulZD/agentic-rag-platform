@@ -176,6 +176,8 @@ python scripts/weekly_metrics_report.py \
   --output reports/weekly_metrics_report.csv
 ```
 
+> 说明：报告类脚本会自动创建输出目录（如 `reports/`），无需手动执行 `mkdir reports`。
+
 ### Step 5：Agent 可解释性演示（Trace）
 
 ```bash

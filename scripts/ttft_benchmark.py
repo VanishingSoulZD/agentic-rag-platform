@@ -13,9 +13,12 @@ import os
 import statistics
 import time
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import tiktoken
 from openai import AsyncOpenAI, BadRequestError
+
+from app.utils import ensure_output_parent
 
 SHORT_PROMPT = "请用两句话解释 Prefill 和 Decode 的区别。"
 LONG_PROMPT = (
@@ -138,6 +141,14 @@ def _build_client() -> tuple[AsyncOpenAI, str, str | None]:
     return client, model, base_url
 
 
+def write_result_file(result: dict, output: str | Path) -> Path:
+    output_path = ensure_output_parent(output)
+    output_path.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    return output_path
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runs", type=int, default=3)
@@ -162,11 +173,10 @@ async def main() -> None:
         "summary": summarize(metrics),
     }
 
-    with open(args.out, "w", encoding="utf-8") as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
+    output_path = write_result_file(result, Path(args.out))
 
     print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
-    print(f"Saved to {args.out}")
+    print(f"Saved to {output_path}")
 
 
 if __name__ == "__main__":
