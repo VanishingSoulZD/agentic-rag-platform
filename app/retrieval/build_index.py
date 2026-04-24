@@ -28,9 +28,10 @@ def get_encoder():
 def load_docs(doc_dir: Path = DOC_DIR) -> list[dict[str, str]]:
     docs: list[dict[str, str]] = []
     for file_path in sorted(doc_dir.glob("*.txt")):
-        docs.append(
-            {"doc_id": file_path.name, "text": file_path.read_text(encoding="utf-8")}
-        )
+        docs.append({
+            "doc_id": file_path.name,
+            "text": file_path.read_text(encoding="utf-8"),
+        })
     return docs
 
 

@@ -7,12 +7,10 @@ from app.metrics import MetricsStore
 def test_metrics_store_migrates_legacy_csv_header(tmp_path: Path) -> None:
     csv_path = tmp_path / "metrics_events.csv"
     csv_path.write_text(
-        "\n".join(
-            [
-                "ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit",
-                "2026-04-01T00:00:00+00:00,POST,/chat,200,1,120.0,,10,5,1",
-            ]
-        ),
+        "\n".join([
+            "ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit",
+            "2026-04-01T00:00:00+00:00,POST,/chat,200,1,120.0,,10,5,1",
+        ]),
         encoding="utf-8",
     )
 

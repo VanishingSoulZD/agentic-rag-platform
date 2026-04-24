@@ -298,35 +298,33 @@ def write_report(result: dict[str, Any], out_path: Path) -> None:
             f"| {c['endpoint']} | {c['method']} | {c['status_code']} | {c['ok']} | {c['note']} |"
         )
 
-    lines.extend(
-        [
-            "",
-            "## 2) 100-Concurrency Load Test (/chat)",
-            "",
-            "| Metric | Value |",
-            "|---|---:|",
-            f"| Concurrency | {load['concurrency']} |",
-            f"| Total Requests | {load['total_requests']} |",
-            f"| Success | {load['success']} |",
-            f"| Errors | {load['errors']} |",
-            f"| Error Rate | {load['error_rate']:.2%} |",
-            f"| P50 (ms) | {load['p50_ms']} |",
-            f"| P95 (ms) | {load['p95_ms']} |",
-            f"| P99 (ms) | {load['p99_ms']} |",
-            f"| QPS | {load['qps']} |",
-            f"| Estimated Cost (USD) | {load['estimated_cost_usd']} |",
-            "",
-            "## 3) Acceptance",
-            f"- Error rate < 2%: **{load['error_rate'] < 0.02}**",
-            f"- P95 <= threshold ({p95_threshold_ms}ms): **{p95_pass}**",
-            f"- Overall pass (error + p95): **{load['accepted']}**",
-            "",
-            "## 4) Notes",
-            "- This report uses real HTTP calls to running FastAPI endpoints.",
-            "- LLM may run in mock mode if OPENAI_API_KEY is not configured.",
-            "- CPU/GPU metrics are not exposed by current API; add node/GPU telemetry for full observability.",
-        ]
-    )
+    lines.extend([
+        "",
+        "## 2) 100-Concurrency Load Test (/chat)",
+        "",
+        "| Metric | Value |",
+        "|---|---:|",
+        f"| Concurrency | {load['concurrency']} |",
+        f"| Total Requests | {load['total_requests']} |",
+        f"| Success | {load['success']} |",
+        f"| Errors | {load['errors']} |",
+        f"| Error Rate | {load['error_rate']:.2%} |",
+        f"| P50 (ms) | {load['p50_ms']} |",
+        f"| P95 (ms) | {load['p95_ms']} |",
+        f"| P99 (ms) | {load['p99_ms']} |",
+        f"| QPS | {load['qps']} |",
+        f"| Estimated Cost (USD) | {load['estimated_cost_usd']} |",
+        "",
+        "## 3) Acceptance",
+        f"- Error rate < 2%: **{load['error_rate'] < 0.02}**",
+        f"- P95 <= threshold ({p95_threshold_ms}ms): **{p95_pass}**",
+        f"- Overall pass (error + p95): **{load['accepted']}**",
+        "",
+        "## 4) Notes",
+        "- This report uses real HTTP calls to running FastAPI endpoints.",
+        "- LLM may run in mock mode if OPENAI_API_KEY is not configured.",
+        "- CPU/GPU metrics are not exposed by current API; add node/GPU telemetry for full observability.",
+    ])
 
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 

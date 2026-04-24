@@ -19,7 +19,7 @@ class OpenRouterProvider(OpenAICompatibleProvider):
             provider_name="openrouter",
             api_key=api_key or os.getenv("OPENROUTER_API_KEY"),
             base_url=base_url or os.getenv("OPENROUTER_BASE_URL"),
-            model=model or config.OPENROUTER_MODEL_CHAT,
+            model=model or config.OPENROUTER_MODEL_RAG,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
         )

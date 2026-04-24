@@ -121,14 +121,12 @@ class PlannerExecutorAgent:
             )
             if strategy in {"exact", "semantic"}:
                 cache_layers["tool"] = strategy
-            observations.append(
-                {
-                    "step_id": step.step_id,
-                    "tool": step.tool_name,
-                    "input": step.tool_input,
-                    "output": result,
-                }
-            )
+            observations.append({
+                "step_id": step.step_id,
+                "tool": step.tool_name,
+                "input": step.tool_input,
+                "output": result,
+            })
 
         summary = await self._summary_step(
             question=sanitized_question, steps=steps, observations=observations

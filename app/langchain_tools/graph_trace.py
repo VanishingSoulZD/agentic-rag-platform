@@ -24,9 +24,11 @@ def build_execution_graph(execution_result: dict) -> dict:
         if step.get("kind") == "summary":
             label = f"LLM Summary\\n{step['instruction']}"
 
-        nodes.append(
-            {"id": step_id, "label": label, "type": step.get("kind", "unknown")}
-        )
+        nodes.append({
+            "id": step_id,
+            "label": label,
+            "type": step.get("kind", "unknown"),
+        })
         edges.append({"from": previous_id, "to": step_id, "label": "next"})
         previous_id = step_id
 

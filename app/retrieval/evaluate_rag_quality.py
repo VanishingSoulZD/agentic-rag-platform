@@ -175,17 +175,15 @@ async def evaluate(k: int = 3) -> dict[str, Any]:
         bm25_retrieval_hits += int(bm25_retrieval_ok)
         emb_answer_hits += int(answer_ok)
 
-        samples.append(
-            {
-                "question": item.question,
-                "expected_doc": item.expected_doc,
-                "embedding_topk": emb_doc_ids,
-                "bm25_topk": bm25_doc_ids,
-                "retrieval_ok": emb_retrieval_ok,
-                "bm25_retrieval_ok": bm25_retrieval_ok,
-                "answer_ok": answer_ok,
-            }
-        )
+        samples.append({
+            "question": item.question,
+            "expected_doc": item.expected_doc,
+            "embedding_topk": emb_doc_ids,
+            "bm25_topk": bm25_doc_ids,
+            "retrieval_ok": emb_retrieval_ok,
+            "bm25_retrieval_ok": bm25_retrieval_ok,
+            "answer_ok": answer_ok,
+        })
 
     total = len(gold)
     report = {
