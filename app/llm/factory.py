@@ -81,7 +81,9 @@ def create_provider(
     if explicit_provider:
         if explicit_provider not in _SUPPORTED_PROVIDERS:
             raise ValueError(f"Unsupported LLM provider: {explicit_provider}")
-        if explicit_provider != "openai" and not _get_provider_api_key(explicit_provider, api_key):
+        if explicit_provider != "openai" and not _get_provider_api_key(
+            explicit_provider, api_key
+        ):
             env_name = _PROVIDER_KEY_ENV[explicit_provider]
             raise ValueError(
                 f"{explicit_provider} provider requires API key via `{env_name}` or `api_key` argument"

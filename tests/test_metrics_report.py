@@ -9,14 +9,12 @@ def test_generate_weekly_report(tmp_path: Path) -> None:
     output_csv = tmp_path / "weekly_report.csv"
 
     input_csv.write_text(
-        "\n".join(
-            [
-                "ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit,response_cache_hit,retrieval_cache_hit,embedding_cache_hit,tool_cache_hit",
-                "2026-03-30T08:00:00+00:00,POST,/chat,200,1,100.0,,10,20,1,1,0,0,0",
-                "2026-03-31T08:00:00+00:00,POST,/chat/stream,200,1,220.0,60.0,15,30,1,0,1,0,0",
-                "2026-04-01T08:00:00+00:00,POST,/chat,500,0,300.0,,5,5,0,0,0,0,1",
-            ]
-        ),
+        "\n".join([
+            "ts,method,path,status_code,success,response_time_ms,ttft_ms,prompt_tokens,completion_tokens,cache_hit,response_cache_hit,retrieval_cache_hit,embedding_cache_hit,tool_cache_hit",
+            "2026-03-30T08:00:00+00:00,POST,/chat,200,1,100.0,,10,20,1,1,0,0,0",
+            "2026-03-31T08:00:00+00:00,POST,/chat/stream,200,1,220.0,60.0,15,30,1,0,1,0,0",
+            "2026-04-01T08:00:00+00:00,POST,/chat,500,0,300.0,,5,5,0,0,0,0,1",
+        ]),
         encoding="utf-8",
     )
 

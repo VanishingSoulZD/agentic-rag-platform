@@ -131,24 +131,22 @@ class MetricsStore:
 
             with self.csv_path.open("a", newline="", encoding="utf-8") as fp:
                 writer = csv.writer(fp)
-                writer.writerow(
-                    [
-                        ts,
-                        method,
-                        path,
-                        status_code,
-                        success_as_int,
-                        f"{response_time_ms:.4f}",
-                        "" if ttft_ms is None else f"{ttft_ms:.4f}",
-                        int(prompt_tokens),
-                        int(completion_tokens),
-                        cache_hit_as_int,
-                        layer_hit_int["response"],
-                        layer_hit_int["retrieval"],
-                        layer_hit_int["embedding"],
-                        layer_hit_int["tool"],
-                    ]
-                )
+                writer.writerow([
+                    ts,
+                    method,
+                    path,
+                    status_code,
+                    success_as_int,
+                    f"{response_time_ms:.4f}",
+                    "" if ttft_ms is None else f"{ttft_ms:.4f}",
+                    int(prompt_tokens),
+                    int(completion_tokens),
+                    cache_hit_as_int,
+                    layer_hit_int["response"],
+                    layer_hit_int["retrieval"],
+                    layer_hit_int["embedding"],
+                    layer_hit_int["tool"],
+                ])
 
     def render_prometheus(self) -> str:
         with self._lock:
@@ -203,31 +201,25 @@ class MetricsStore:
                 f"response_time_ms_cache_miss_p95 {p95_cache_miss:.4f}",
             ]
 
-            lines.extend(
-                [
-                    "# HELP requests_total Number of API requests.",
-                    "# TYPE requests_total counter",
-                    f"requests_total {self._request_count}",
-                ]
-            )
-            lines.extend(
-                [
-                    "# HELP cache_layer_hits_total Cache hits by layer and strategy.",
-                    "# TYPE cache_layer_hits_total counter",
-                ]
-            )
+            lines.extend([
+                "# HELP requests_total Number of API requests.",
+                "# TYPE requests_total counter",
+                f"requests_total {self._request_count}",
+            ])
+            lines.extend([
+                "# HELP cache_layer_hits_total Cache hits by layer and strategy.",
+                "# TYPE cache_layer_hits_total counter",
+            ])
             for (layer, strategy), value in sorted(self._layer_hits.items()):
                 lines.append(
                     f'cache_layer_hits_total{{layer="{layer}",strategy="{strategy}"}} {value}'
                 )
 
-            lines.extend(
-                [
-                    "# HELP metrics_last_updated_unix Last updated unix timestamp.",
-                    "# TYPE metrics_last_updated_unix gauge",
-                    f"metrics_last_updated_unix {last_updated}",
-                ]
-            )
+            lines.extend([
+                "# HELP metrics_last_updated_unix Last updated unix timestamp.",
+                "# TYPE metrics_last_updated_unix gauge",
+                f"metrics_last_updated_unix {last_updated}",
+            ])
         return "\n".join(lines) + "\n"
 
 

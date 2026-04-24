@@ -17,7 +17,9 @@ class OpenAIProvider(OpenAICompatibleProvider):
         super().__init__(
             provider_name="openai",
             api_key=api_key or os.getenv("OPENAI_API_KEY"),
-            base_url=base_url or os.getenv("OPENAI_API_BASE") or os.getenv("OPENAI_BASE_URL"),
+            base_url=base_url
+            or os.getenv("OPENAI_API_BASE")
+            or os.getenv("OPENAI_BASE_URL"),
             model=model or os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,

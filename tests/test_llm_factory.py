@@ -13,7 +13,9 @@ from app.llm.providers.openai import OpenAIProvider
 from app.llm.providers.openrouter import OpenRouterProvider
 
 
-def test_factory_defaults_to_openai_when_only_openai_credentials_present(monkeypatch) -> None:
+def test_factory_defaults_to_openai_when_only_openai_credentials_present(
+    monkeypatch,
+) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("OPENAI_MODEL", "gpt-4.1-mini")
     monkeypatch.delenv("FIREWORKS_API_KEY", raising=False)
@@ -133,7 +135,9 @@ def test_fireworks_provider_hello() -> None:
 @pytest.mark.integration
 def test_openrouter_provider_hello() -> None:
     if not os.getenv("OPENROUTER_API_KEY"):
-        pytest.skip("OPENROUTER_API_KEY not configured; skip openrouter integration test")
+        pytest.skip(
+            "OPENROUTER_API_KEY not configured; skip openrouter integration test"
+        )
 
     answer, is_mock = _run_hello("openrouter")
 

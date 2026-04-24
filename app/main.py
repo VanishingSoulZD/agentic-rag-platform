@@ -71,12 +71,10 @@ planner_executor_agent = PlannerExecutorAgent(tool_cache=cache_manager.tool_cach
 
 
 def _to_cache_key(prefix: str, *parts: object) -> str:
-    payload = "|".join(
-        [
-            prefix,
-            *[json.dumps(part, ensure_ascii=False, sort_keys=True) for part in parts],
-        ]
-    )
+    payload = "|".join([
+        prefix,
+        *[json.dumps(part, ensure_ascii=False, sort_keys=True) for part in parts],
+    ])
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     return f"{prefix}:{digest}"
 

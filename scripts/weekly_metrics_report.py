@@ -39,26 +39,24 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     with output_csv.open("w", encoding="utf-8", newline="") as fp:
         writer = csv.writer(fp)
-        writer.writerow(
-            [
-                "week_start",
-                "request_count",
-                "success_rate",
-                "cache_hit_rate",
-                "latency_p50_ms",
-                "latency_p95_ms",
-                "latency_p99_ms",
-                "latency_cache_hit_p95_ms",
-                "latency_cache_miss_p95_ms",
-                "avg_ttft_ms",
-                "prompt_tokens_total",
-                "completion_tokens_total",
-                "response_cache_hit_rate",
-                "retrieval_cache_hit_rate",
-                "embedding_cache_hit_rate",
-                "tool_cache_hit_rate",
-            ]
-        )
+        writer.writerow([
+            "week_start",
+            "request_count",
+            "success_rate",
+            "cache_hit_rate",
+            "latency_p50_ms",
+            "latency_p95_ms",
+            "latency_p99_ms",
+            "latency_cache_hit_p95_ms",
+            "latency_cache_miss_p95_ms",
+            "avg_ttft_ms",
+            "prompt_tokens_total",
+            "completion_tokens_total",
+            "response_cache_hit_rate",
+            "retrieval_cache_hit_rate",
+            "embedding_cache_hit_rate",
+            "tool_cache_hit_rate",
+        ])
 
         for week_start in sorted(buckets):
             rows = buckets[week_start]
@@ -86,26 +84,24 @@ def generate_weekly_report(input_csv: Path, output_csv: Path) -> None:
             tool_hits = sum(int(r.get("tool_cache_hit") or 0) for r in rows)
             count = len(rows)
 
-            writer.writerow(
-                [
-                    week_start,
-                    count,
-                    f"{(success_count / count) if count else 0:.6f}",
-                    f"{(cache_hits / count) if count else 0:.6f}",
-                    f"{percentile(latencies, 0.5):.4f}",
-                    f"{percentile(latencies, 0.95):.4f}",
-                    f"{percentile(latencies, 0.99):.4f}",
-                    f"{percentile(hit_latencies, 0.95):.4f}",
-                    f"{percentile(miss_latencies, 0.95):.4f}",
-                    f"{(sum(ttfts) / len(ttfts)) if ttfts else 0:.4f}",
-                    prompt_tokens_total,
-                    completion_tokens_total,
-                    f"{(response_hits / count) if count else 0:.6f}",
-                    f"{(retrieval_hits / count) if count else 0:.6f}",
-                    f"{(embedding_hits / count) if count else 0:.6f}",
-                    f"{(tool_hits / count) if count else 0:.6f}",
-                ]
-            )
+            writer.writerow([
+                week_start,
+                count,
+                f"{(success_count / count) if count else 0:.6f}",
+                f"{(cache_hits / count) if count else 0:.6f}",
+                f"{percentile(latencies, 0.5):.4f}",
+                f"{percentile(latencies, 0.95):.4f}",
+                f"{percentile(latencies, 0.99):.4f}",
+                f"{percentile(hit_latencies, 0.95):.4f}",
+                f"{percentile(miss_latencies, 0.95):.4f}",
+                f"{(sum(ttfts) / len(ttfts)) if ttfts else 0:.4f}",
+                prompt_tokens_total,
+                completion_tokens_total,
+                f"{(response_hits / count) if count else 0:.6f}",
+                f"{(retrieval_hits / count) if count else 0:.6f}",
+                f"{(embedding_hits / count) if count else 0:.6f}",
+                f"{(tool_hits / count) if count else 0:.6f}",
+            ])
 
 
 def main() -> None:
