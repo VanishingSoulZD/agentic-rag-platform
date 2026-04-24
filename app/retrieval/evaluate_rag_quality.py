@@ -42,26 +42,45 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _f1(pred: str, gold: str) -> float:
+    """计算预测答案与标准答案的 token 级 F1 分数。
+
+    这里不是按“句子是否完全相等”来打分，而是把文本先标准化并切词，
+    再比较两个 token 列表的重叠程度：
+    - Precision：预测 token 里有多少比例是“命中”的；
+    - Recall：标准答案 token 里有多少比例被预测覆盖；
+    - F1：Precision 与 Recall 的调和平均。
+
+    这样做比 exact match 更宽松，能容忍同义表达、语序变化或部分冗余。
+    """
     p_tokens = _tokenize(pred)
     g_tokens = _tokenize(gold)
+    # 任何一侧为空都无法形成有效重叠，直接记 0 分。
     if not p_tokens or not g_tokens:
         return 0.0
 
+    # 统计预测答案中每个 token 的出现次数（multiset / 词频袋模型）。
+    # 之所以要计数而不是 set，是为了正确处理重复词。
     common = {}
     for token in p_tokens:
         common[token] = common.get(token, 0) + 1
 
+    # 遍历 gold token，按“可消费词频”计算命中数 hit。
+    # 命中一次就将对应词频减 1，避免一个预测 token 被重复匹配多次。
     hit = 0
     for token in g_tokens:
         if common.get(token, 0) > 0:
             hit += 1
             common[token] -= 1
 
+    # 没有任何重叠词，Precision/Recall 都为 0，F1 也为 0。
     if hit == 0:
         return 0.0
 
+    # precision = 命中词数 / 预测词总数
+    # recall    = 命中词数 / 标准词总数
     precision = hit / len(p_tokens)
     recall = hit / len(g_tokens)
+    # F1 = 2PR / (P+R)
     return 2 * precision * recall / (precision + recall)
 
 
@@ -80,22 +99,38 @@ def _load_corpus() -> dict[str, str]:
 def _bm25_scores(
     query: str, corpus: dict[str, str], k1: float = 1.5, b: float = 0.75
 ) -> list[tuple[str, float]]:
+    """为 query 计算语料中每个文档的 BM25 分数并降序返回。
+
+    参数说明：
+    - k1：控制词频饱和速度。越大，term frequency 增长带来的收益越明显。
+    - b：控制文档长度归一化强度。0 表示不做长度归一化，1 表示完全归一化。
+
+    返回值：
+    - [(doc_id, score), ...]，按 score 从高到低排序。
+    """
+    # 将 corpus 转成列表，后续需要多次遍历。
     docs = list(corpus.items())
+    # 预先分词，避免在打分循环里重复 tokenize。
     tokenized_docs = {doc_id: _tokenize(text) for doc_id, text in docs}
     q_tokens = _tokenize(query)
 
+    # 文档长度（以 token 数量计）与平均文档长度 avgdl，用于 BM25 的长度归一化。
     doc_lens = {doc_id: len(tokens) for doc_id, tokens in tokenized_docs.items()}
     avgdl = sum(doc_lens.values()) / max(len(doc_lens), 1)
 
+    # 计算 document frequency: 每个词出现在多少篇文档中（不是总出现次数）。
+    # 因此这里对每篇文档使用 set(tokens) 去重。
     df: dict[str, int] = {}
     for tokens in tokenized_docs.values():
         for token in set(tokens):
             df[token] = df.get(token, 0) + 1
 
+    # N 为文档总数，后续用于 IDF 计算。
     N = len(tokenized_docs)
     scores: list[tuple[str, float]] = []
 
     for doc_id, tokens in tokenized_docs.items():
+        # 计算当前文档的 term frequency。
         tf: dict[str, int] = {}
         for token in tokens:
             tf[token] = tf.get(token, 0) + 1
@@ -103,15 +138,22 @@ def _bm25_scores(
         score = 0.0
         dl = doc_lens[doc_id]
         for term in q_tokens:
+            # 查询词不在文档中，对当前文档贡献为 0。
             if term not in tf:
                 continue
+            # IDF：词越“稀有”（df 小）权重越高；越“常见”权重越低。
+            # 这里采用常见的平滑形式，避免极端值与除零问题。
             idf = math.log((N - df.get(term, 0) + 0.5) / (df.get(term, 0) + 0.5) + 1)
             term_tf = tf[term]
+            # BM25 的 tf 饱和 + 长度归一化分母：
+            # - term_tf 增大时，分数增益会逐步饱和（非线性）；
+            # - 文档越长（dl/avgdl 越大），归一化后分数会被抑制。
             denom = term_tf + k1 * (1 - b + b * (dl / (avgdl or 1)))
             score += idf * (term_tf * (k1 + 1)) / (denom or 1)
 
         scores.append((doc_id, score))
 
+    # 返回按分数降序排列的结果，便于直接截取 top-k。
     return sorted(scores, key=lambda x: x[1], reverse=True)
 
 
